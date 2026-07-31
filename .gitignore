@@ -1,0 +1,25 @@
+# Python / Flask Önbellek Dosyaları
+__pycache__/
+*.py[cod]
+*$py.class
+instance/
+.webassets-cache
+
+# SSL Sertifikaları ve Anahtarlar
+*.pem
+*.key
+*.crt
+
+# Yüklenen Kullanıcı Dosyaları & PDF'ler
+static/uploads/*
+!static/uploads/.gitkeep
+
+# Veritabanı ve Şifre Dosyaları
+.env
+*.sql
+*.sqlite3
+
+# Sistem ve IDE Dosyaları
+.DS_Store
+.vscode/
+.idea/

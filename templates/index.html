@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>DIKA - Çalışan & Zimmet Yönetim Portalı</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        .navbar-corporate {
+            background: linear-repeat, #1e293b;
+            background-color: #1e293b !important;
+            border-bottom: 3px solid #10b981;
+        }
+    </style>
+</head>
+<body class="bg-light">
+
+    <!-- LOGOLU KURUMSAL ÜST BAR -->
+    <div class="navbar-corporate text-white py-3 px-4 shadow-sm mb-4">
+        <div class="container-fluid d-flex justify-content-between align-items-center flex-wrap gap-2">
+            
+            <!-- SOL: DİKA SAYDAM BEYAZ LOGO & BAŞLIK -->
+            <div class="d-flex align-items-center gap-3">
+                <img src="/static/img/Saydam Beyaz (2).png" alt="DİKA Logo" style="height: 48px; object-fit: contain;" onerror="this.src='/static/img/Dİka Saydam Beyaz.png'">
+                <div>
+                    <h4 class="m-0 fw-bold tracking-wide">DİKA</h4>
+                    <small class="text-white-50 fw-semibold">Çalışan & Zimmet Yönetim Portalı</small>
+                </div>
+            </div>
+
+            <!-- SAĞ: YKH BEYAZ LOGO & KULLANICI İŞLEMLERİ -->
+            <div class="d-flex align-items-center gap-3">
+                <img src="/static/img/YKH LOGO BEYAZ 1.png" alt="YKH Logo" class="d-none d-md-block me-2" style="height: 38px; object-fit: contain;">
+                
+                <div class="bg-dark bg-opacity-50 px-3 py-1 rounded border border-secondary border-opacity-50 d-flex align-items-center gap-2">
+                    <span class="small text-white-50">Aktif Kullanıcı:</span>
+                    <strong class="text-white">{{ session['user_name'] }}</strong>
+                    <span class="badge bg-success">{{ session['user_rutbe'] }}</span>
+                </div>
+
+                <button class="btn btn-sm btn-success fw-bold" data-bs-toggle="modal" data-bs-target="#importCsvModal">📤 Excel İçe Aktar</button>
+                <a href="/export-csv" class="btn btn-sm btn-outline-light fw-bold">📊 Rapor İndir</a>
+                <a href="/logout" class="btn btn-sm btn-danger fw-bold">Çıkış</a>
+            </div>
+
+        </div>
+    </div>
+
+<div class="container py-2">
+
+    <!-- TOPLU ENVANTER YÜKLEME MODALI -->
+    <div class="modal fade" id="importCsvModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form action="/import-csv" method="POST" enctype="multipart/form-data">
+              <div class="modal-header bg-success text-white">
+                <h5 class="modal-title fw-bold">📤 Excel/CSV Toplu Envanter Yükle</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+              </div>
+              <div class="modal-body text-start">
+                  <p class="small text-muted mb-3">
+                      Elinizdeki envanter listesini tek tıkla veritabanına aktarabilirsiniz. Dosya formatının doğru olması için önceden örnek şablonu inceleyebilirsiniz.
+                  </p>
+                  <div class="mb-3">
+                      <a href="/download-template" class="btn btn-sm btn-outline-primary w-100 fw-bold">📑 Örnek Yükleme Şablonunu İndir (.csv)</a>
+                  </div>
+                  <hr>
+                  <div class="mb-3">
+                      <label class="form-label small fw-bold">Yüklenecek CSV Dosyasını Seçin</label>
+                      <input type="file" name="csv_file" class="form-control" accept=".csv" required>
+                  </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                <button type="submit" class="btn btn-success fw-bold">Envantere Yükle</button>
+              </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- İSTATİSTİK ÖZET KARTLARI -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-primary text-white p-3">
+                <div class="small fw-bold text-white-50">TOPLAM ENVANTER DEĞERİ</div>
+                <div class="fs-3 fw-bold mt-1">💰 {{ "{:,.2f}".format(stats['toplam_deger']) }} TL</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-success text-white p-3">
+                <div class="small fw-bold text-white-50">BOŞTAKİ CİHAZ/EŞYA</div>
+                <div class="fs-3 fw-bold mt-1">📦 {{ stats['bosta_count'] }} Adet</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-warning text-dark p-3">
+                <div class="small fw-bold text-muted">AKTİF ZİMMETLİ CİHAZ</div>
+                <div class="fs-3 fw-bold mt-1">📋 {{ stats['zimmetli_count'] }} Adet</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-dark text-white p-3">
+                <div class="small fw-bold text-white-50">TOPLAM ÇALIŞAN SAYISI</div>
+                <div class="fs-3 fw-bold mt-1">👥 {{ stats['calisan_count'] }} Kişi</div>
+            </div>
+        </div>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- ANLIK ARAMA BARI -->
+    <div class="card border-0 shadow-sm mb-4 p-2">
+        <input type="text" id="searchInput" class="form-control form-control-lg border-0" placeholder="🔍 Sistem genelinde hızlı arama yapın (Çalışan adı, eşya adı, seri no...)" onkeyup="filterTables()">
+    </div>
+
+    <div class="row g-4">
+        <!-- SOL KOLON: FORMLAR -->
+        <div class="col-md-4">
+            
+            <!-- 1. Zimmet Atama Formu -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-dark text-white fw-bold">📌 Yeni Zimmet Ataması</div>
+                <div class="card-body">
+                    <form action="/zimmet-ver" method="POST">
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">TESLİM ALACAK PERSONEL (ALT RÜTBE)</label>
+                            <select name="teslim_alan_id" class="form-select" required>
+                                <option value="">Seçiniz...</option>
+                                {% for c in tum_calisanlar %}
+                                    {% if c.id != session['user_id'] %}
+                                        <option value="{{ c.id }}">{{ c.ad_soyad }}</option>
+                                    {% endif %}
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">ZİMMETLENECEK EŞYA</label>
+                            <select name="esya_id" class="form-select" required>
+                                <option value="">Seçiniz...</option>
+                                {% for e in bosta_esyalar %}
+                                    {% if e.durum == 'Bosta' %}
+                                    <option value="{{ e.id }}">{{ e.esya_adi }} ({{ e.seri_no }}) - {{ "{:,.2f}".format(e.fiyat) }} TL</option>
+                                    {% endif %}
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">TAHMİNİ TESLİM TARİHİ (Opsiyonel)</label>
+                            <input type="date" name="tahmini_iade_tarihi" class="form-control">
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100 fw-bold">Zimmetle</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- 2. Yeni Çalışan Ekleme Formu -->
+            {% if can_add_employee %}
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-secondary text-white fw-bold">👤 Yeni Çalışan Kaydı</div>
+                <div class="card-body">
+                    <form action="/calisan-ekle" method="POST">
+                        <div class="mb-2">
+                            <input type="text" name="ad_soyad" class="form-control" placeholder="Ad Soyad" required>
+                        </div>
+                        <div class="mb-2">
+                            <input type="email" name="eposta" class="form-control" placeholder="E-posta" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label text-muted small mb-1 fw-bold">RÜTBE (Yetkiniz Dahilindekiler)</label>
+                            <select name="rutbe_id" class="form-select" required>
+                                {% for r in eklenebilir_rutbeler %}
+                                    <option value="{{ r.id }}">{{ r.rutbe_adi }}</option>
+                                {% else %}
+                                    <option value="">Ekleyebileceğiniz alt rütbe yok</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small mb-1 fw-bold">BAĞLI OLDUĞU ÜST AMİR</label>
+                            <select name="manager_id" class="form-select">
+                                <option value="">Yok (En Üst Düzey Yönetici)</option>
+                                {% for c in tum_calisanlar %}
+                                    <option value="{{ c.id }}">{{ c.ad_soyad }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100 fw-bold">Çalışan Ekle</button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- 3. Yeni Eşya Ekleme Formu -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-info text-dark fw-bold">💻 Envantere Yeni Eşya Ekle</div>
+                <div class="card-body">
+                    <form action="/esya-ekle" method="POST" enctype="multipart/form-data">
+                        <div class="mb-2">
+                            <input type="text" name="esya_adi" class="form-control" placeholder="Eşya / Cihaz Adı" required>
+                        </div>
+                        <div class="mb-2">
+                            <input type="text" name="seri_no" class="form-control" placeholder="Seri No / Barkod" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label text-muted small mb-1 fw-bold">KATEGORİ & KONUM</label>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <input type="text" name="kategori" class="form-control" placeholder="Elektronik vb.">
+                                </div>
+                                <div class="col-6">
+                                    <input type="text" name="konum" class="form-control" placeholder="Oda 101 vb.">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label text-muted small mb-1 fw-bold">EŞYA FİYATI (TL)</label>
+                            <input type="number" step="0.01" name="fiyat" class="form-control" placeholder="0.00" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label text-muted small mb-1 fw-bold">GARANTİ BİTİŞ TARİHİ</label>
+                            <input type="date" name="garanti_bitis" class="form-control">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small mb-1 fw-bold">FATURA (PDF)</label>
+                            <input type="file" name="fatura_pdf" class="form-control" accept=".pdf">
+                        </div>
+                        <button type="submit" class="btn btn-dark w-100 fw-bold">Envantere Ekle</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- 4. Şifre Değiştirme Formu -->
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-warning text-dark fw-bold">🔑 Şifremi Değiştir</div>
+                <div class="card-body">
+                    <form action="/sifre-degistir" method="POST">
+                        <div class="mb-2">
+                            <input type="password" name="eski_sifre" class="form-control" placeholder="Mevcut Şifre" required>
+                        </div>
+                        <div class="mb-2">
+                            <input type="password" name="yeni_sifre" class="form-control" placeholder="Yeni Şifre" required>
+                        </div>
+                        <div class="mb-3">
+                            <input type="password" name="yeni_sifre_tekrar" class="form-control" placeholder="Yeni Şifre (Tekrar)" required>
+                        </div>
+                        <button type="submit" class="btn btn-outline-dark w-100 fw-bold">Şifreyi Güncelle</button>
+                    </form>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- SAĞ KOLON: TABLOLAR -->
+        <div class="col-md-8">
+
+            <!-- DEPODAKİ BOŞTAKİ EŞYALAR TABLOSU -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-success text-white fw-bold d-flex justify-content-between align-items-center">
+                    <span>🏢 Depodaki Boştaki Eşyalar & Envanter Yönetimi</span>
+                    <span class="badge bg-light text-dark">{{ bosta_esyalar|length }} Adet</span>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0 align-middle searchable-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Eşya Adı</th>
+                                <th>Kategori / Konum</th>
+                                <th>Fiyat</th>
+                                <th>Durum</th>
+                                <th>İşlemler</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for e in bosta_esyalar %}
+                            <tr>
+                                <td class="fw-bold">{{ e.esya_adi }} <br><small class="text-muted">{{ e.seri_no }}</small></td>
+                                <td><span class="badge bg-secondary">{{ e.kategori }}</span> <br><small class="text-muted">{{ e.konum }}</small></td>
+                                <td><span class="badge bg-light text-dark border">{{ "{:,.2f}".format(e.fiyat) }} TL</span></td>
+                                <td>
+                                    {% if e.durum == 'Bakimda' %}
+                                        <span class="badge bg-danger">🚨 Bakımda / Tamirde</span>
+                                    {% else %}
+                                        <span class="badge bg-success">📦 Boşta</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary fw-bold me-1" data-bs-toggle="modal" data-bs-target="#editModal{{ e.id }}">Düzenle</button>
+                                    <form action="/esya-sil/{{ e.id }}" method="POST" class="d-inline" onsubmit="return confirm('Bu eşyayı envanterden silmek istediğinize emin misiniz?');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger fw-bold">Sil</button>
+                                    </form>
+
+                                    <!-- DÜZENLEME MODALI -->
+                                    <div class="modal fade" id="editModal{{ e.id }}" tabindex="-1">
+                                      <div class="modal-dialog modal-dialog-centered">
+                                        <div class="modal-content">
+                                          <form action="/esya-guncelle/{{ e.id }}" method="POST">
+                                              <div class="modal-header bg-primary text-white">
+                                                <h5 class="modal-title fw-bold">Eşya & Konum Güncelle</h5>
+                                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                              </div>
+                                              <div class="modal-body text-start">
+                                                  <div class="mb-2">
+                                                      <label class="form-label small fw-bold">Eşya Adı</label>
+                                                      <input type="text" name="esya_adi" class="form-control" value="{{ e.esya_adi }}" required>
+                                                  </div>
+                                                  <div class="mb-2">
+                                                      <label class="form-label small fw-bold">Seri No / Barkod</label>
+                                                      <input type="text" name="seri_no" class="form-control" value="{{ e.seri_no }}" required>
+                                                  </div>
+                                                  <div class="row g-2 mb-2">
+                                                      <div class="col-6">
+                                                          <label class="form-label small fw-bold">Kategori</label>
+                                                          <input type="text" name="kategori" class="form-control" value="{{ e.kategori }}">
+                                                      </div>
+                                                      <div class="col-6">
+                                                          <label class="form-label small fw-bold">Fiziksel Konum</label>
+                                                          <input type="text" name="konum" class="form-control" value="{{ e.konum }}">
+                                                      </div>
+                                                  </div>
+                                                  <div class="mb-2">
+                                                      <label class="form-label small fw-bold">Durumu (Cihaz Sağlığı)</label>
+                                                      <select name="durum" class="form-select">
+                                                          <option value="Bosta" {% if e.durum == 'Bosta' %}selected{% endif %}>📦 Boşta (Kullanılabilir)</option>
+                                                          <option value="Bakimda" {% if e.durum == 'Bakimda' %}selected{% endif %}>🚨 Bakımda / Tamirde</option>
+                                                          <option value="Hurda" {% if e.durum == 'Hurda' %}selected{% endif %}>❌ Hurda / Kullanılamaz</option>
+                                                      </select>
+                                                  </div>
+                                                  <div class="mb-2">
+                                                      <label class="form-label small fw-bold">Fiyat (TL)</label>
+                                                      <input type="number" step="0.01" name="fiyat" class="form-control" value="{{ e.fiyat }}" required>
+                                                  </div>
+                                                  <div class="mb-2">
+                                                      <label class="form-label small fw-bold">Garanti Bitiş Tarihi</label>
+                                                      <input type="date" name="garanti_bitis" class="form-control" value="{{ e.garanti_bitis }}">
+                                                  </div>
+                                              </div>
+                                              <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                                                <button type="submit" class="btn btn-primary fw-bold">Güncelle</button>
+                                              </div>
+                                          </form>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-3">Depoda boşta bekleyen eşya bulunmuyor.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 1. Hiyerarşi Tablosu -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-primary text-white fw-bold d-flex justify-content-between align-items-center">
+                    <span>👥 Çalışan Hiyerarşisi ve Üst Amir İlişkileri</span>
+                    <span class="badge bg-light text-dark">{{ calisanlar|length }} Personel</span>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0 searchable-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Ad Soyad</th>
+                                <th>Rütbe</th>
+                                <th>Sorumlu Olduğu Üst Amir</th>
+                                {% if can_add_employee %}<th>İşlemler</th>{% endif %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in calisanlar %}
+                            <tr>
+                                <td class="fw-bold">{{ c.ad_soyad }} <br><small class="text-muted">{{ c.eposta }}</small></td>
+                                <td><span class="badge bg-secondary fs-6">{{ c.rutbe_adi }}</span></td>
+                                <td>
+                                    {% if c.amir_adi %}
+                                        <span class="text-primary fw-bold">{{ c.amir_adi }}</span> <small class="text-muted">({{ c.amir_rutbe }})</small>
+                                    {% else %}
+                                        <span class="text-success fw-bold">Üst Yönetici</span>
+                                    {% endif %}
+                                </td>
+                                {% if can_add_employee %}
+                                <td>
+                                    {% if c.id != session['user_id'] %}
+                                    <form action="/sifre-sifirla/{{ c.id }}" method="POST" class="d-inline" onsubmit="return confirm('Bu kullanıcının şifresini 123456 olarak sıfırlamak istediğinize emin misiniz?');">
+                                        <button type="submit" class="btn btn-sm btn-outline-warning text-dark me-1" title="Şifreyi 123456 Yapar">🔑 Şifre Sıfırla</button>
+                                    </form>
+                                    <form action="/calisan-sil/{{ c.id }}" method="POST" class="d-inline" onsubmit="return confirm('Bu çalışanı silmek istediğinize emin misiniz?');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">Sil</button>
+                                    </form>
+                                    {% endif %}
+                                </td>
+                                {% endif %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 2. Aktif Zimmet Kayıtları -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-warning text-dark fw-bold d-flex justify-content-between align-items-center">
+                    <span>📋 Aktif Zimmet Kayıtları</span>
+                    <span class="badge bg-dark">{{ aktif_zimmetler|length }} Adet</span>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0 align-middle searchable-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Eşya Bilgisi</th>
+                                <th>Fiyat / Fatura</th>
+                                <th>Teslim Alan</th>
+                                <th>Zimmetleyen</th>
+                                <th>Belge & Etiket</th>
+                                <th>İşlem</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for z in aktif_zimmetler %}
+                            <tr>
+                                <td class="fw-bold">
+                                    {{ z.esya_adi }} <br><small class="text-muted">{{ z.seri_no }}</small>
+                                    {% if z.tahmini_iade_tarihi %}
+                                        <br><small class="text-danger fw-bold">⏰ Teslim: {{ z.tahmini_iade_tarihi }}</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge bg-light text-dark border">{{ "{:,.2f}".format(z.fiyat) }} TL</span><br>
+                                    {% if z.fatura_pdf %}
+                                        <a href="/uploads/{{ z.fatura_pdf }}" target="_blank" class="btn btn-sm btn-link p-0 text-decoration-none">📄 Fatura PDF</a>
+                                    {% endif %}
+                                </td>
+                                <td>{{ z.alan_personel }}</td>
+                                <td><span class="badge bg-info text-dark">{{ z.veren_amir }}</span></td>
+                                <td>
+                                    <a href="/zimmet-pdf/{{ z.id }}" class="btn btn-sm btn-outline-dark fw-bold mb-1">📄 Tutanak PDF</a><br>
+                                    <button class="btn btn-sm btn-outline-secondary fw-bold" onclick="generateQr('{{ z.esya_adi }}', '{{ z.seri_no }}', '{{ z.alan_personel }}')">🏷️ QR Etiket</button>
+                                </td>
+                                <td>
+                                    <form action="/zimmet-iade/{{ z.id }}/{{ z.esya_id }}" method="POST" onsubmit="return confirm('Bu eşyayı iade almak istediğinize emin misiniz?');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger fw-bold">Teslim Al</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-3">Henüz aktif zimmetlenen bir eşya bulunmuyor.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 3. Geçmiş Zimmet Hareketleri -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-secondary text-white fw-bold">📜 Geçmiş Zimmet Hareketleri (Teslim Edilenler)</div>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0 searchable-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Eşya Bilgisi</th>
+                                <th>Fiyat</th>
+                                <th>Fatura</th>
+                                <th>Kullanan Personel</th>
+                                <th>Teslim Tarihi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for gz in gecmis_zimmetler %}
+                            <tr class="table-light text-muted">
+                                <td><del>{{ gz.esya_adi }}</del> <br><small>{{ gz.seri_no }}</small></td>
+                                <td><small>{{ "{:,.2f}".format(gz.fiyat) }} TL</small></td>
+                                <td>
+                                    {% if gz.fatura_pdf %}
+                                        <a href="/uploads/{{ gz.fatura_pdf }}" target="_blank" class="btn btn-sm btn-link p-0">PDF</a>
+                                    {% else %}
+                                        <small>-</small>
+                                    {% endif %}
+                                </td>
+                                <td>{{ gz.alan_personel }}</td>
+                                <td><span class="badge bg-success">{{ gz.iade_tarihi }}</span></td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-3">Tamamlanmış / iade edilmiş geçmiş kayıt bulunmuyor.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 4. LOG TABLOSU -->
+            {% if is_top_manager %}
+            <div class="card shadow-sm border-dark">
+                <div class="card-header bg-dark text-white fw-bold d-flex justify-content-between align-items-center">
+                    <span>🕵️ Sistem Log & Denetim Kayıtları (Sadece Üst Yönetici)</span>
+                    <span class="badge bg-danger">Canlı Denetim</span>
+                </div>
+                <div class="card-body p-0" style="max-height: 350px; overflow-y: auto;">
+                    <table class="table table-sm table-striped mb-0 small searchable-table">
+                        <thead class="table-dark sticky-top">
+                            <tr>
+                                <th>Kullanıcı</th>
+                                <th>İşlem</th>
+                                <th>Detay</th>
+                                <th>Tarih & Saat</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for l in loglar %}
+                            <tr>
+                                <td class="fw-bold text-primary">{{ l.ad_soyad if l.ad_soyad else 'Sistem' }}</td>
+                                <td><span class="badge bg-secondary">{{ l.islem }}</span></td>
+                                <td>{{ l.detay }}</td>
+                                <td><span class="text-muted">{{ l.tarih }}</span></td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-3">Henüz kaydedilmiş hareket bulunmuyor.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+
+<!-- QR KOD BARKOD ETİKETİ MODALI -->
+<div class="modal fade" id="qrModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content text-center p-3">
+      <h6 class="fw-bold mb-2">DIKA ENVANTER ETİKETİ</h6>
+      <hr class="my-1">
+      <div class="my-3 d-flex justify-content-center">
+        <div id="canvasQrContainer"></div>
+      </div>
+      <div id="qrText" class="small text-muted fw-bold"></div>
+      <button class="btn btn-sm btn-dark mt-3 w-100" onclick="window.print()">Etiketi Yazdır</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+function filterTables() {
+    let input = document.getElementById("searchInput").value.toLowerCase();
+    let tables = document.querySelectorAll(".searchable-table");
+
+    tables.forEach(table => {
+        let rows = table.getElementsByTagName("tr");
+        for (let i = 1; i < rows.length; i++) {
+            let rowText = rows[i].innerText.toLowerCase();
+            if (rowText.includes(input)) {
+                rows[i].style.display = "";
+            } else {
+                rows[i].style.display = "none";
+            }
+        }
+    });
+}
+
+function generateQr(esyaAdi, seriNo, personel) {
+    let container = document.getElementById("canvasQrContainer");
+    container.innerHTML = "";
+    
+    let canvas = document.createElement("canvas");
+    canvas.width = 160;
+    canvas.height = 160;
+    let ctx = canvas.getContext("2d");
+    
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, 160, 160);
+    ctx.fillStyle = "#000000";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(5, 5, 150, 150);
+
+    function drawSquare(x, y) {
+        ctx.fillRect(x, y, 35, 35);
+        ctx.clearRect(x+5, y+5, 25, 25);
+        ctx.fillRect(x+10, y+10, 15, 15);
+    }
+    drawSquare(15, 15);
+    drawSquare(110, 15);
+    drawSquare(15, 110);
+
+    ctx.font = "9px Arial";
+    ctx.fillText("DIKA ENVANTER", 42, 70);
+    ctx.fillText("SN: " + seriNo.substring(0, 10), 42, 85);
+    ctx.fillText("OKUTUNUZ", 50, 100);
+
+    container.appendChild(canvas);
+    document.getElementById("qrText").innerText = `${esyaAdi} (${seriNo})`;
+
+    var myModal = new bootstrap.Modal(document.getElementById('qrModal'));
+    myModal.show();
+}
+</script>
+
+</body>
+</html>
