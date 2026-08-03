@@ -132,23 +132,23 @@
                 <div class="card-body">
                     <form action="/zimmet-ver" method="POST">
                         <div class="mb-3">
-                            <label class="form-label text-muted small fw-bold">TESLİM ALACAK PERSONEL (ALT RÜTBE)</label>
-                            <select name="teslim_alan_id" class="form-select" required>
-                                <option value="">Seçiniz...</option>
-                                {% for c in tum_calisanlar %}
-                                    {% if c.id != session['user_id'] %}
-                                        <option value="{{ c.id }}">{{ c.ad_soyad }}</option>
-                                    {% endif %}
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="mb-3">
                             <label class="form-label text-muted small fw-bold">ZİMMETLENECEK EŞYA</label>
                             <select name="esya_id" class="form-select" required>
                                 <option value="">Seçiniz...</option>
                                 {% for e in bosta_esyalar %}
                                     {% if e.durum == 'Bosta' %}
                                     <option value="{{ e.id }}">{{ e.esya_adi }} ({{ e.seri_no }}) - {{ "{:,.2f}".format(e.fiyat) }} TL</option>
+                                    {% endif %}
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">TESLİM ALACAK PERSONEL (ALT RÜTBE)</label>
+                            <select name="teslim_alan_id" class="form-select" required>
+                                <option value="">Seçiniz...</option>
+                                {% for c in tum_calisanlar %}
+                                    {% if c.id != session['user_id'] %}
+                                        <option value="{{ c.id }}">{{ c.ad_soyad }}</option>
                                     {% endif %}
                                 {% endfor %}
                             </select>
