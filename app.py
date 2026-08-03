@@ -780,5 +780,47 @@ def zimmet_iade(zimmet_id, esya_id):
     flash("Eşya başarıyla iade alındı.", "info")
     return redirect(url_for('dashboard'))
 
+
+@app.route('/tutanak-yukle/<int:zimmet_id>', methods=['POST'])
+def tutanak_yukle(zimmet_id):
+    if 'user_id' not in session:
+        return redirect('/login')
+
+    if 'tutanak_file' not in request.files:
+        flash('Dosya seçilmedi!', 'danger')
+        return redirect('/')
+
+    file = request.files['tutanak_file']
+    if file.filename == '':
+        flash('Dosya seçilmedi!', 'danger')
+        return redirect('/')
+
+    if file and file.filename.lower().endswith('.pdf'):
+        filename = f"tutanak_zimmet_{zimmet_id}_{secure_filename(file.filename)}"
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE zimmetler SET imzali_tutanak_pdf = %s WHERE id = %s", (filename, zimmet_id))
+        conn.commit()
+        conn.close()
+
+        flash('İmzalı tutanak başarıyla yüklendi.', 'success')
+    else:
+        flash('Sadece PDF formatında dosya yükleyebilirsiniz.', 'warning')
+
+    return redirect('/')
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True, ssl_context='adhoc')
+
+# --- İMZALI TUTANAK YÜKLEME ROUTE'U ---
+import os
+from werkzeug.utils import secure_filename
+
+UPLOAD_FOLDER = os.path.join(app.root_path, 'static/uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+

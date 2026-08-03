@@ -38,7 +38,7 @@
                 </div>
 
                 <button class="btn btn-sm btn-success fw-bold" data-bs-toggle="modal" data-bs-target="#importCsvModal">📤 Excel İçe Aktar</button>
-                <a href="/export-csv" class="btn btn-sm btn-outline-light fw-bold">📊 Rapor İndir</a>
+                <button class="btn btn-sm btn-outline-light fw-bold" data-bs-toggle="modal" data-bs-target="#reportCsvModal">📊 Rapor İndir</button>
                 <a href="/logout" class="btn btn-sm btn-danger fw-bold">Çıkış</a>
             </div>
 
@@ -65,18 +65,323 @@
                   </div>
                   <hr>
                   <div class="mb-3">
-                            <label class="form-label text-muted small fw-bold">AİT OLDUĞU BİRİM</label>
-                            <select name="birim" class="form-select" required>
-                                <option value="">Birim Seçiniz...</option>
-                                <option value="Bilgi İşlem Birimi">Bilgi İşlem Birimi</option>
-                                <option value="Staj Birimi">Staj Birimi</option>
-                                <option value="Güvenlik Birimi">Güvenlik Birimi</option>
-                                <option value="İnsan Kaynakları">İnsan Kaynakları</option>
-                                <option value="İdari ve Mali İşler">İdari ve Mali İşler</option>
-                                <option value="Destek Hizmetleri">Destek Hizmetleri</option>
-                                <option value="Genel Depo">Genel Depo</option>
+                      <label class="form-label small fw-bold">Yüklenecek CSV Dosyasını Seçin</label>
+                      <input type="file" name="csv_file" class="form-control" accept=".csv" required>
+                  </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                <button type="submit" class="btn btn-success fw-bold">Envantere Yükle</button>
+              </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- FİLTRELİ RAPOR İNDİRME MODALI -->
+    <div class="modal fade" id="reportCsvModal" tabindex="-1" aria-labelledby="reportCsvModalTitle" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form action="/export-csv" method="GET">
+              <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title fw-bold" id="reportCsvModalTitle">📊 Filtreli Envanter Raporu</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+              </div>
+              <div class="modal-body text-start">
+                  <p class="small text-muted">Filtre seçmeden indirirseniz tüm envanteri içeren rapor oluşturulur. Her iki filtre seçildiğinde yalnızca her iki koşulu karşılayan eşyalar indirilir.</p>
+                  <div class="mb-3">
+                      <label class="form-label small fw-bold">Kişi (Aktif Zimmetler)</label>
+                      <select name="personel_id" class="form-select">
+                          <option value="">Tüm kişiler</option>
+                          {% for c in tum_calisanlar %}
+                          <option value="{{ c.id }}">{{ c.ad_soyad }}</option>
+                          {% endfor %}
+                      </select>
+                  </div>
+                  <div class="mb-1">
+                      <label class="form-label small fw-bold">Birim</label>
+                      <select name="birim" class="form-select">
+                          <option value="">Tüm birimler</option>
+                          {% for birim in rapor_birimleri %}
+                          <option value="{{ birim }}">{{ birim }}</option>
+                          {% endfor %}
+                      </select>
+                  </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                <button type="submit" class="btn btn-success fw-bold">CSV Raporunu İndir</button>
+              </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- İSTATİSTİK ÖZET KARTLARI -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-primary text-white p-3">
+                <div class="small fw-bold text-white-50">TOPLAM ENVANTER DEĞERİ</div>
+                <div class="fs-3 fw-bold mt-1">💰 {{ "{:,.2f}".format(stats['toplam_deger']) }} TL</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-success text-white p-3">
+                <div class="small fw-bold text-white-50">BOŞTAKİ CİHAZ/EŞYA</div>
+                <div class="fs-3 fw-bold mt-1">📦 {{ stats['bosta_count'] }} Adet</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-warning text-dark p-3">
+                <div class="small fw-bold text-muted">AKTİF ZİMMETLİ CİHAZ</div>
+                <div class="fs-3 fw-bold mt-1">📋 {{ stats['zimmetli_count'] }} Adet</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-dark text-white p-3">
+                <div class="small fw-bold text-white-50">TOPLAM ÇALIŞAN SAYISI</div>
+                <div class="fs-3 fw-bold mt-1">👥 {{ stats['calisan_count'] }} Kişi</div>
+            </div>
+        </div>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- ANLIK ARAMA BARI -->
+    <div class="card border-0 shadow-sm mb-4 p-2">
+        <input type="text" id="searchInput" class="form-control form-control-lg border-0" placeholder="🔍 Sistem genelinde hızlı arama yapın (Çalışan adı, eşya adı, seri no...)" onkeyup="filterTables()">
+    </div>
+
+    <div class="row g-4">
+        <!-- SOL KOLON: FORMLAR -->
+        <div class="col-md-4">
+            
+            <!-- 1. Zimmet Atama Formu -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-dark text-white fw-bold">📌 Yeni Zimmet Ataması</div>
+                <div class="card-body">
+                    <form action="/zimmet-ver" method="POST">
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">ZİMMETLENECEK EŞYA</label>
+                            <select name="esya_id" class="form-select" required>
+                                <option value="">Seçiniz...</option>
+                                {% for e in bosta_esyalar %}
+                                    {% if e.durum == 'Bosta' %}
+                                    <option value="{{ e.id }}">{{ e.esya_adi }} ({{ e.seri_no }}) - {{ "{:,.2f}".format(e.fiyat) }} TL</option>
+                                    {% endif %}
+                                {% endfor %}
                             </select>
                         </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">TESLİM ALACAK PERSONEL (ALT RÜTBE)</label>
+                            <select name="teslim_alan_id" class="form-select" required>
+                                <option value="">Seçiniz...</option>
+                                {% for c in tum_calisanlar %}
+                                    {% if c.id != session['user_id'] %}
+                                        <option value="{{ c.id }}">{{ c.ad_soyad }}</option>
+                                    {% endif %}
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">TAHMİNİ TESLİM TARİHİ (Opsiyonel)</label>
+                            <input type="date" name="tahmini_iade_tarihi" class="form-control">
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100 fw-bold">Zimmetle</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- 2. Yeni Çalışan Ekleme Formu -->
+            {% if can_add_employee %}
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-secondary text-white fw-bold">👤 Yeni Çalışan Kaydı</div>
+                <div class="card-body">
+                    <form action="/calisan-ekle" method="POST"> 
+                      <div class="mb-2">
+                            <input type="text" name="ad_soyad" class="form-control" placeholder="Ad Soyad" required>
+                        </div>
+                        <div class="mb-3">
+                          <label class="form-label text-muted small fw-bold">TC KİMLİK NO</label>
+                          <input type="text" name="tc_no" class="form-control" maxlength="11" minlength="11" placeholder="11 haneli TC No" required>
+                      </div>
+                        <div class="mb-2">
+                            <input type="email" name="eposta" class="form-control" placeholder="E-posta" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label text-muted small mb-1 fw-bold">RÜTBE (Yetkiniz Dahilindekiler)</label>
+                            <select name="rutbe_id" class="form-select" required>
+                                {% for r in eklenebilir_rutbeler %}
+                                    <option value="{{ r.id }}">{{ r.rutbe_adi }}</option>
+                                {% else %}
+                                    <option value="">Ekleyebileceğiniz alt rütbe yok</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small mb-1 fw-bold">BAĞLI OLDUĞU ÜST AMİR</label>
+                            <select name="manager_id" class="form-select">
+                                <option value="">Yok (En Üst Düzey Yönetici)</option>
+                                {% for c in tum_calisanlar %}
+                                    <option value="{{ c.id }}">{{ c.ad_soyad }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100 fw-bold">Çalışan Ekle</button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- 3. Yeni Eşya Ekleme Formu -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-info text-dark fw-bold">💻 Envantere Yeni Eşya Ekle</div>
+                <div class="card-body">
+                    <form action="/esya-ekle" method="POST" enctype="multipart/form-data">
+                        <div class="mb-2">
+                            <input type="text" name="esya_adi" class="form-control" placeholder="Eşya / Cihaz Adı" required>
+                        </div>
+                        <div class="mb-2">
+                            <input type="text" name="seri_no" class="form-control" placeholder="Seri No / Barkod" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label text-muted small mb-1 fw-bold">KATEGORİ & KONUM</label>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <input type="text" name="kategori" class="form-control" placeholder="Elektronik vb.">
+                                </div>
+                                <div class="mb-3">
+                                  <label class="form-label text-muted small fw-bold">AİT OLDUĞU BİRİM</label>
+                                  <select name="birim" class="form-select" required>
+                                      <option value="">Birim Seçiniz...</option>
+                                      <option value="Bilgi İşlem Birimi">Bilgi İşlem Birimi</option>
+                                      <option value="Staj Birimi">Staj Birimi</option>
+                                      <option value="Güvenlik Birimi">Güvenlik Birimi</option>
+                                      <option value="İnsan Kaynakları">İnsan Kaynakları</option>
+                                      <option value="İdari ve Mali İşler">İdari ve Mali İşler</option>
+                                      <option value="Destek Hizmetleri">Destek Hizmetleri</option>
+                                      <option value="Genel Depo">Genel Depo</option>
+                                  </select>
+                              </div>
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label text-muted small mb-1 fw-bold">EŞYA FİYATI (TL)</label>
+                            <input type="number" step="0.01" name="fiyat" class="form-control" placeholder="0.00" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label text-muted small mb-1 fw-bold">GARANTİ BİTİŞ TARİHİ</label>
+                            <input type="date" name="garanti_bitis" class="form-control">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted small mb-1 fw-bold">FATURA (PDF)</label>
+                            <input type="file" name="fatura_pdf" class="form-control" accept=".pdf">
+                        </div>
+                        <button type="submit" class="btn btn-dark w-100 fw-bold">Envantere Ekle</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- 4. Şifre Değiştirme Formu -->
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-warning text-dark fw-bold">🔑 Şifremi Değiştir</div>
+                <div class="card-body">
+                    <form action="/sifre-degistir" method="POST">
+                        <div class="mb-2">
+                            <input type="password" name="eski_sifre" class="form-control" placeholder="Mevcut Şifre" required>
+                        </div>
+                        <div class="mb-2">
+                            <input type="password" name="yeni_sifre" class="form-control" placeholder="Yeni Şifre" required>
+                        </div>
+                        <div class="mb-3">
+                            <input type="password" name="yeni_sifre_tekrar" class="form-control" placeholder="Yeni Şifre (Tekrar)" required>
+                        </div>
+                        <button type="submit" class="btn btn-outline-dark w-100 fw-bold">Şifreyi Güncelle</button>
+                    </form>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- SAĞ KOLON: TABLOLAR -->
+        <div class="col-md-8">
+
+            <!-- TÜM ENVANTER TABLOSU -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-success text-white fw-bold d-flex justify-content-between align-items-center">
+                    <span>🏢 Tüm Envanter & Eşya Yönetimi</span>
+                    <span class="badge bg-light text-dark">{{ envanter_esyalari|length }} Adet</span>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0 align-middle searchable-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Eşya Adı</th>
+                                <th>Kategori / Konum</th>
+                                <th>Fiyat</th>
+                                <th>Durum</th>
+                                <th>İşlemler</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for e in envanter_esyalari %}
+                            <tr>
+                                <td class="fw-bold">{{ e.esya_adi }} <br><small class="text-muted">{{ e.seri_no }}</small></td>
+                                <td><span class="badge bg-secondary">{{ e.kategori }}</span> <br><small class="text-muted">{{ e.konum }}</small></td>
+                                <td><span class="badge bg-light text-dark border">{{ "{:,.2f}".format(e.fiyat) }} TL</span></td>
+                                <td>
+                                    {% if e.durum == 'Bakimda' %}
+                                        <span class="badge bg-danger">🚨 Bakımda / Tamirde</span>
+                                    {% elif e.durum == 'Zimmetli' %}
+                                        <span class="badge bg-warning text-dark">📋 Zimmetli</span>
+                                    {% elif e.durum == 'Hurda' %}
+                                        <span class="badge bg-secondary">❌ Hurda / Kullanılamaz</span>
+                                    {% else %}
+                                        <span class="badge bg-success">📦 Boşta</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary fw-bold me-1" data-bs-toggle="modal" data-bs-target="#editModal{{ e.id }}">Düzenle</button>
+                                    <form action="/esya-sil/{{ e.id }}" method="POST" class="d-inline" onsubmit="return confirm('Bu eşyayı envanterden silmek istediğinize emin misiniz?');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger fw-bold">Sil</button>
+                                    </form>
+
+                                    <!-- DÜZENLEME MODALI -->
+                                    <div class="modal fade" id="editModal{{ e.id }}" tabindex="-1">
+                                      <div class="modal-dialog modal-dialog-centered">
+                                        <div class="modal-content">
+                                          <form action="/esya-guncelle/{{ e.id }}" method="POST">
+                                              <div class="modal-header bg-primary text-white">
+                                                <h5 class="modal-title fw-bold">Eşya & Konum Güncelle</h5>
+                                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                              </div>
+                                              <div class="modal-body text-start">
+                                                  <div class="mb-2">
+                                                      <label class="form-label small fw-bold">Eşya Adı</label>
+                                                      <input type="text" name="esya_adi" class="form-control" value="{{ e.esya_adi }}" required>
+                                                  </div>
+                                                  <div class="mb-2">
+                                                      <label class="form-label small fw-bold">Seri No / Barkod</label>
+                                                      <input type="text" name="seri_no" class="form-control" value="{{ e.seri_no }}" required>
+                                                  </div>
+                                                  <div class="row g-2 mb-2">
+                                                      <div class="col-6">
+                                                          <label class="form-label small fw-bold">Kategori</label>
+                                                          <input type="text" name="kategori" class="form-control" value="{{ e.kategori }}">
+                                                      </div>
+                                                      <div class="col-6">
+                                                          <label class="form-label small fw-bold">Fiziksel Konum</label>
+                                                          <input type="text" name="konum" class="form-control" value="{{ e.konum }}">
+                                                      </div>
                                                   </div>
                                                   <div class="mb-2">
                                                       <label class="form-label small fw-bold">Durumu (Cihaz Sağlığı)</label>
@@ -84,6 +389,9 @@
                                                           <option value="Bosta" {% if e.durum == 'Bosta' %}selected{% endif %}>📦 Boşta (Kullanılabilir)</option>
                                                           <option value="Bakimda" {% if e.durum == 'Bakimda' %}selected{% endif %}>🚨 Bakımda / Tamirde</option>
                                                           <option value="Hurda" {% if e.durum == 'Hurda' %}selected{% endif %}>❌ Hurda / Kullanılamaz</option>
+                                                          {% if e.durum == 'Zimmetli' %}
+                                                          <option value="Zimmetli" selected>📋 Zimmetli (İade alınana kadar değiştirilemez)</option>
+                                                          {% endif %}
                                                       </select>
                                                   </div>
                                                   <div class="mb-2">
@@ -108,7 +416,7 @@
                             </tr>
                             {% else %}
                             <tr>
-                                <td colspan="5" class="text-center text-muted py-3">Depoda boşta bekleyen eşya bulunmuyor.</td>
+                                <td colspan="5" class="text-center text-muted py-3">Envanterde kayıtlı eşya bulunmuyor.</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -126,11 +434,11 @@
                     <table class="table table-hover mb-0 searchable-table">
                         <thead class="table-light">
                             <tr>
-                                <th>TC No</th>
-                                    <th>Ad Soyad</th>
+                                <th>Ad Soyad</th>
                                 <th>Rütbe</th>
+                                <th>Birim / Çalışma Yeri</th>
                                 <th>Sorumlu Olduğu Üst Amir</th>
-                                {% if can_add_employee %}<th>İşlemler</th>{% endif %}
+                                {% if can_add_employee or can_edit_personnel %}<th>İşlemler</th>{% endif %}
                             </tr>
                         </thead>
                         <tbody>
@@ -139,14 +447,120 @@
                                 <td class="fw-bold">{{ c.ad_soyad }} <br><small class="text-muted">{{ c.eposta }}</small></td>
                                 <td><span class="badge bg-secondary fs-6">{{ c.rutbe_adi }}</span></td>
                                 <td>
+                                    <span class="fw-semibold">{{ c.birim or '-' }}</span><br>
+                                    <small class="text-muted">{{ c.calisma_yeri or '-' }}</small>
+                                </td>
+                                <td>
                                     {% if c.amir_adi %}
                                         <span class="text-primary fw-bold">{{ c.amir_adi }}</span> <small class="text-muted">({{ c.amir_rutbe }})</small>
                                     {% else %}
                                         <span class="text-success fw-bold">Üst Yönetici</span>
                                     {% endif %}
                                 </td>
-                                {% if can_add_employee %}
+                                {% if can_add_employee or can_edit_personnel %}
                                 <td>
+                                    {% if can_edit_personnel %}
+                                    <button type="button" class="btn btn-sm btn-outline-primary me-1" data-bs-toggle="modal" data-bs-target="#employeeEditModal{{ c.id }}">Düzenle</button>
+
+                                    <div class="modal fade" id="employeeEditModal{{ c.id }}" tabindex="-1" aria-labelledby="employeeEditTitle{{ c.id }}" aria-hidden="true">
+                                        <div class="modal-dialog modal-dialog-centered">
+                                            <div class="modal-content text-start">
+                                                <form action="/calisan-guncelle/{{ c.id }}" method="POST">
+                                                    <div class="modal-header bg-primary text-white">
+                                                        <h5 class="modal-title fs-6 fw-bold" id="employeeEditTitle{{ c.id }}">Personel Bilgilerini Düzenle</h5>
+                                                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                                    </div>
+                                                    <div class="modal-body">
+                                                        <div class="mb-2">
+                                                            <label class="form-label small fw-bold">Ad Soyad</label>
+                                                            <input type="text" name="ad_soyad" class="form-control" value="{{ c.ad_soyad }}" required>
+                                                        </div>
+                                                        <div class="mb-2">
+                                                            <label class="form-label small fw-bold">E-posta</label>
+                                                            <input type="email" name="eposta" class="form-control" value="{{ c.eposta }}" required>
+                                                        </div>
+                                                        <div class="mb-2">
+                                                            <label class="form-label small fw-bold">TC Kimlik No</label>
+                                                            <input type="text" name="tc_no" class="form-control" maxlength="11" value="{{ c.tc_no or '' }}">
+                                                        </div>
+                                                        <div class="row g-2 mb-2">
+                                                            <div class="col-6">
+                                                                <label class="form-label small fw-bold">Birim</label>
+                                                                <input type="text" name="birim" class="form-control" value="{{ c.birim or '' }}">
+                                                            </div>
+                                                            <div class="col-6">
+                                                                <label class="form-label small fw-bold">Çalışma Yeri</label>
+                                                                <input type="text" name="calisma_yeri" class="form-control" value="{{ c.calisma_yeri or '' }}">
+                                                            </div>
+                                                        </div>
+                                                        <div class="mb-2">
+                                                            <label class="form-label small fw-bold">Çalışma Durumu</label>
+                                                            <input type="text" name="calisma_durumu" class="form-control" value="{{ c.calisma_durumu or '' }}">
+                                                        </div>
+                                                        <div class="mb-2">
+                                                            <label class="form-label small fw-bold">Rütbe</label>
+                                                            <select name="rutbe_id" class="form-select" required>
+                                                                {% for r in rutbeler %}
+                                                                <option value="{{ r.id }}" {% if r.id == c.rutbe_id %}selected{% endif %}>{{ r.rutbe_adi }}</option>
+                                                                {% endfor %}
+                                                            </select>
+                                                        </div>
+                                                        <div class="mb-2">
+                                                            <label class="form-label small fw-bold">Üst Amir</label>
+                                                            <select name="manager_id" class="form-select">
+                                                                <option value="">Yok (Üst Yönetici)</option>
+                                                                {% for amir in tum_calisanlar %}
+                                                                {% if amir.id != c.id %}
+                                                                <option value="{{ amir.id }}" {% if amir.id == c.manager_id %}selected{% endif %}>{{ amir.ad_soyad }}</option>
+                                                                {% endif %}
+                                                                {% endfor %}
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                                                        <button type="submit" class="btn btn-primary">Kaydet</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+                                    {% if can_edit_personnel and c.aktif_zimmet_sayisi > 0 %}
+                                    <button type="button" class="btn btn-sm btn-outline-warning text-dark me-1" data-bs-toggle="modal" data-bs-target="#transferModal{{ c.id }}">
+                                        Zimmetleri Devret ({{ c.aktif_zimmet_sayisi }})
+                                    </button>
+
+                                    <div class="modal fade" id="transferModal{{ c.id }}" tabindex="-1" aria-labelledby="transferTitle{{ c.id }}" aria-hidden="true">
+                                        <div class="modal-dialog modal-dialog-centered">
+                                            <div class="modal-content text-start">
+                                                <form action="/zimmet-toplu-devir/{{ c.id }}" method="POST" onsubmit="return confirm('Bu personelin tüm aktif zimmetlerini seçilen kişiye devretmek istediğinize emin misiniz?');">
+                                                    <div class="modal-header bg-warning">
+                                                        <h5 class="modal-title fs-6 fw-bold" id="transferTitle{{ c.id }}">Toplu Zimmet Devri</h5>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                    </div>
+                                                    <div class="modal-body">
+                                                        <p class="mb-3"><strong>{{ c.ad_soyad }}</strong> üzerindeki <strong>{{ c.aktif_zimmet_sayisi }}</strong> aktif eşya devredilecek.</p>
+                                                        <label class="form-label small fw-bold">Yeni Teslim Alan Personel</label>
+                                                        <select name="hedef_calisan_id" class="form-select" required>
+                                                            <option value="">Seçiniz...</option>
+                                                            {% for hedef in tum_calisanlar %}
+                                                            {% if hedef.id != c.id %}
+                                                            <option value="{{ hedef.id }}">{{ hedef.ad_soyad }}</option>
+                                                            {% endif %}
+                                                            {% endfor %}
+                                                        </select>
+                                                        <p class="small text-muted mt-2 mb-0">Önceki zimmet kayıtları geçmişte korunur; eşyalar hedef kişi adına yeni aktif zimmet olarak kaydedilir.</p>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                                                        <button type="submit" class="btn btn-warning">Tümünü Devret</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endif %}
                                     {% if c.id != session['user_id'] %}
                                     <form action="/sifre-sifirla/{{ c.id }}" method="POST" class="d-inline" onsubmit="return confirm('Bu kullanıcının şifresini 123456 olarak sıfırlamak istediğinize emin misiniz?');">
                                         <button type="submit" class="btn btn-sm btn-outline-warning text-dark me-1" title="Şifreyi 123456 Yapar">🔑 Şifre Sıfırla</button>
@@ -200,42 +614,46 @@
                                 <td>{{ z.alan_personel }}</td>
                                 <td><span class="badge bg-info text-dark">{{ z.veren_amir }}</span></td>
                                 <td>
-                                    <div class="btn-group btn-group-sm mb-1">
-                                        <a href="/zimmet-pdf/{{ z.id }}" target="_blank" class="btn btn-outline-dark fw-bold" title="Taslak Tutanak Indir">📄 Tutanak PDF</a>
-                                        {% if z.imzali_tutanak_pdf %}
-                                            <a href="/static/uploads/{{ z.imzali_tutanak_pdf }}" target="_blank" class="btn btn-success fw-bold" title="İmzalı Tutanağı Görüntüle">
-                                                <i class="bi bi-check-circle-fill"></i> İmzalı Evrak
-                                            </a>
-                                        {% else %}
-                                            <button type="button" class="btn btn-outline-primary fw-bold" data-bs-toggle="modal" data-bs-target="#uploadModal{{ z.id }}" title="İmzalı Tutanak Yükle">
-                                                <i class="bi bi-upload"></i> İmzalı Yükle
-                                            </button>
-                                        {% endif %}
-                                    </div><br>
-                                    
-                                    <!-- Modal: Tutanak Yukle -->
-                                    <div class="modal fade" id="uploadModal{{ z.id }}" tabindex="-1">
-                                        <div class="modal-dialog modal-dialog-centered">
-                                            <div class="modal-content">
-                                                <form action="/tutanak-yukle/{{ z.id }}" method="POST" enctype="multipart/form-data">
-                                                    <div class="modal-header">
-                                                        <h5 class="modal-title fs-6 fw-bold">İmzalı Tutanak Yükle (Zimmet #{{ z.id }})</h5>
-                                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                                    </div>
-                                                    <div class="modal-body text-start">
-                                                        <p class="small text-muted mb-2">Lütfen ıslak imzalı veya e-imzalı resmi tutanak belgesini <b>PDF</b> formatında seçiniz.</p>
-                                                        <input type="file" name="tutanak_file" class="form-control" accept=".pdf" required>
-                                                    </div>
-                                                    <div class="modal-footer">
-                                                        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">İptal</button>
-                                                        <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-cloud-upload"></i> Yükle ve Kaydet</button>
-                                                    </div>
-                                                </form>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <button class="btn btn-sm btn-outline-secondary fw-bold" onclick="generateQr('{{ z.esya_adi }}', '{{ z.seri_no }}', '{{ z.alan_personel }}')">🏷️ QR Etiket</button>
-                                </td>
+                                  <div class="btn-group btn-group-sm">
+                                      <a href="/zimmet-pdf/{{ z.id }}" target="_blank" class="btn btn-outline-dark fw-bold">
+                                          📄 Tutanak PDF
+                                      </a>
+                                      {% if z.imzali_tutanak_pdf %}
+                                          <a href="/static/uploads/{{ z.imzali_tutanak_pdf }}" target="_blank" class="btn btn-success fw-bold" title="Tutanağı Aç">
+                                              <i class="bi bi-eye-fill"></i> Tutanağı İncele
+                                          </a>
+                                          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#uploadModal{{ z.id }}" title="Yeniden Yükle">
+                                              <i class="bi bi-pencil-square"></i>
+                                          </button>
+                                      {% else %}
+                                          <button type="button" class="btn btn-outline-primary fw-bold" data-bs-toggle="modal" data-bs-target="#uploadModal{{ z.id }}">
+                                              <i class="bi bi-upload"></i> İmzalı Yükle
+                                          </button>
+                                      {% endif %}
+                                  </div>
+                              
+                                  <!-- Modal: İmzalı Tutanak Yükleme -->
+                                  <div class="modal fade" id="uploadModal{{ z.id }}" tabindex="-1">
+                                      <div class="modal-dialog modal-dialog-centered">
+                                          <div class="modal-content text-start">
+                                              <form action="/tutanak-yukle/{{ z.id }}" method="POST" enctype="multipart/form-data">
+                                                  <div class="modal-header">
+                                                      <h5 class="modal-title fs-6 fw-bold">İmzalı Tutanak Yükle (Zimmet #{{ z.id }})</h5>
+                                                      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                  </div>
+                                                  <div class="modal-body">
+                                                      <p class="small text-muted mb-2">Lütfen ıslak imzalı veya e-imzalı resmi tutanak belgesini <b>PDF</b> formatında yükleyiniz.</p>
+                                                      <input type="file" name="tutanak_file" class="form-control" accept=".pdf" required>
+                                                  </div>
+                                                  <div class="modal-footer">
+                                                      <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">İptal</button>
+                                                      <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-cloud-upload"></i> Yükle ve Kaydet</button>
+                                                  </div>
+                                              </form>
+                                          </div>
+                                      </div>
+                                  </div>
+                              </td>
                                 <td>
                                     <form action="/zimmet-iade/{{ z.id }}/{{ z.esya_id }}" method="POST" onsubmit="return confirm('Bu eşyayı iade almak istediğinize emin misiniz?');">
                                         <button type="submit" class="btn btn-sm btn-outline-danger fw-bold">Teslim Al</button>
