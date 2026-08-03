@@ -215,13 +215,13 @@
                             <input type="text" name="seri_no" class="form-control" placeholder="Seri No / Barkod" required>
                         </div>
                         <div class="mb-2">
-                            <label class="form-label text-muted small mb-1 fw-bold">KATEGORİ & KONUM</label>
+                            <label class="form-label text-muted small mb-1 fw-bold">KATEGORİ & AİT OLDUĞU BİRİM</label>
                             <div class="row g-2">
                                 <div class="col-6">
                                     <input type="text" name="kategori" class="form-control" placeholder="Elektronik vb.">
                                 </div>
                                 <div class="col-6">
-                                    <input type="text" name="konum" class="form-control" placeholder="Oda 101 vb.">
+                                    <input type="text" name="birim" class="form-control" placeholder="Oda 101 vb.">
                                 </div>
                             </div>
                         </div>
@@ -277,7 +277,7 @@
                         <thead class="table-light">
                             <tr>
                                 <th>Eşya Adı</th>
-                                <th>Kategori / Konum</th>
+                                <th>Kategori / Birim</th>
                                 <th>Fiyat</th>
                                 <th>Durum</th>
                                 <th>İşlemler</th>
@@ -287,7 +287,7 @@
                             {% for e in bosta_esyalar %}
                             <tr>
                                 <td class="fw-bold">{{ e.esya_adi }} <br><small class="text-muted">{{ e.seri_no }}</small></td>
-                                <td><span class="badge bg-secondary">{{ e.kategori }}</span> <br><small class="text-muted">{{ e.konum }}</small></td>
+                                <td><span class="badge bg-secondary">{{ e.kategori }}</span> <br><small class="text-muted">{{ e.birim if e.birim else e.konum }}</small></td>
                                 <td><span class="badge bg-light text-dark border">{{ "{:,.2f}".format(e.fiyat) }} TL</span></td>
                                 <td>
                                     {% if e.durum == 'Bakimda' %}
@@ -308,7 +308,7 @@
                                         <div class="modal-content">
                                           <form action="/esya-guncelle/{{ e.id }}" method="POST">
                                               <div class="modal-header bg-primary text-white">
-                                                <h5 class="modal-title fw-bold">Eşya & Konum Güncelle</h5>
+                                                <h5 class="modal-title fw-bold">Eşya & Birim Güncelle</h5>
                                                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                                               </div>
                                               <div class="modal-body text-start">
@@ -326,8 +326,8 @@
                                                           <input type="text" name="kategori" class="form-control" value="{{ e.kategori }}">
                                                       </div>
                                                       <div class="col-6">
-                                                          <label class="form-label small fw-bold">Fiziksel Konum</label>
-                                                          <input type="text" name="konum" class="form-control" value="{{ e.konum }}">
+                                                          <label class="form-label small fw-bold">Fiziksel Birim</label>
+                                                          <input type="text" name="birim" class="form-control" value="{{ e.birim if e.birim else e.konum }}">
                                                       </div>
                                                   </div>
                                                   <div class="mb-2">
