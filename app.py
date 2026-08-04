@@ -67,6 +67,45 @@ db_config = {
 def get_db():
     return mysql.connector.connect(**db_config)
 
+YENI_RUTBELER = (
+    (1, 'Genel Sekreter', 100),
+    (2, 'YDO Birim Koordinatörü', 75),
+    (3, 'İnsan Kaynakları Personeli', 60),
+    (4, 'Bilgi İşlem Personeli', 50),
+    (5, 'Büro Personeli', 40),
+    (6, 'Muhasebe Personeli', 30),
+    (7, 'System Admin', 90),
+    (8, 'Birim Başkanı', 85),
+    (9, 'Koordinatör', 80),
+    (10, 'Koordinatör V.', 79),
+    (11, 'Uzman', 70),
+    (12, 'Destek Personeli', 45),
+    (13, 'Sürekli İşçi', 20),
+)
+
+
+def rutbeleri_guncelle():
+    """Varsayılan rütbeleri ID'lerini koruyarak güncel tutar."""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.executemany("""
+            INSERT INTO rutbeler (id, rutbe_adi, level)
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE rutbe_adi = VALUES(rutbe_adi), level = VALUES(level)
+        """, YENI_RUTBELER)
+        # Genel Sekreter rütbesi Aykut Aniç'e aittir. Kayıt henüz yoksa
+        # güncelleme etkisiz kalır; daha sonra eklendiğinde tekrar atanır.
+        cursor.execute(
+            "UPDATE calisanlar SET rutbe_id = 1 WHERE ad_soyad = %s",
+            ('Aykut Aniç',)
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"Rütbe güncelleme hatası: {e}")
+
 # VERİTABANINDAKİ ESKİ ŞİFRELERİ OTOMATİK HASH'E DÖNÜŞTÜREN MİGRASYON
 def eski_sifreleri_hashle():
     try:
@@ -87,8 +126,24 @@ def eski_sifreleri_hashle():
     except Exception as e:
         print(f"Hash migrasyon hatasi: {e}")
 
-# Uygulama başlarken eski şifreleri dönüştür
+# ZİMMETLER TABLOSUNDA İMZALI TUTANAK SÜTUNU KONTROLÜ VE MİGRASYONU
+def zimmetler_migrasyonu():
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SHOW COLUMNS FROM zimmetler LIKE 'imzali_tutanak_pdf'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE zimmetler ADD COLUMN imzali_tutanak_pdf VARCHAR(255) DEFAULT NULL")
+            conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"Zimmetler migrasyon hatasi: {e}")
+
+# Uygulama başlarken varsayılan rütbeleri, şifreleri ve veritabanı şemasını güncelle
+rutbeleri_guncelle()
 eski_sifreleri_hashle()
+zimmetler_migrasyonu()
 
 def log_ekle(user_id, islem, detay):
     try:
@@ -218,24 +273,46 @@ def sifre_sifirla(id):
 @app.route('/export-csv')
 @login_required
 def export_csv():
+    personel_id = request.args.get('personel_id', type=int)
+    birim = request.args.get('birim', '').strip()
+
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT e.esya_adi, e.seri_no, e.kategori, e.konum, e.fiyat, e.durum, e.garanti_bitis
+    kosullar = ["1 = 1"]
+    parametreler = []
+    if personel_id:
+        # Kişi filtresi yalnızca seçilen çalışanın aktif zimmetlerini getirir.
+        kosullar.append("z.teslim_alan_id = %s")
+        parametreler.append(personel_id)
+    if birim:
+        kosullar.append("e.konum = %s")
+        parametreler.append(birim)
+
+    cursor.execute(f"""
+        SELECT e.esya_adi, e.seri_no, e.kategori, e.konum, e.fiyat, e.durum, e.garanti_bitis,
+               c.ad_soyad AS zimmetli_personel
         FROM esyalar e
-    """)
+        LEFT JOIN zimmetler z ON z.esya_id = e.id AND z.iade_tarihi IS NULL
+        LEFT JOIN calisanlar c ON c.id = z.teslim_alan_id
+        WHERE {' AND '.join(kosullar)}
+        ORDER BY e.esya_adi, e.seri_no
+    """, parametreler)
     esyalar = cursor.fetchall()
     cursor.close()
     conn.close()
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['Esya Adi', 'Seri No', 'Kategori', 'Konum', 'Fiyat (TL)', 'Durum', 'Garanti Bitis'])
+    writer.writerow(['Esya Adi', 'Seri No', 'Kategori', 'Birim', 'Fiyat (TL)', 'Durum', 'Garanti Bitis', 'Zimmetli Personel'])
 
     for e in esyalar:
-        writer.writerow([e['esya_adi'], e['seri_no'], e['kategori'], e['konum'], e['fiyat'], e['durum'], e['garanti_bitis']])
+        writer.writerow([
+            e['esya_adi'], e['seri_no'], e['kategori'], e['konum'], e['fiyat'],
+            e['durum'], e['garanti_bitis'] or '', e['zimmetli_personel'] or ''
+        ])
 
-    response = Response(output.getvalue(), mimetype="text/csv")
+    # UTF-8 BOM, Türkçe karakterlerin Excel'de doğru açılmasını sağlar.
+    response = Response('\ufeff' + output.getvalue(), mimetype="text/csv; charset=utf-8")
     response.headers["Content-Disposition"] = "attachment; filename=DIKA_Envanter_Raporu.csv"
     return response
 
@@ -316,6 +393,18 @@ def dashboard():
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
 
+    # Rütbe değişiklikleri açık oturumlarda da hemen görünür olsun.
+    cursor.execute("""
+        SELECT r.rutbe_adi, r.level
+        FROM calisanlar c
+        JOIN rutbeler r ON c.rutbe_id = r.id
+        WHERE c.id = %s
+    """, (session['user_id'],))
+    aktif_kullanici = cursor.fetchone()
+    if aktif_kullanici:
+        session['user_rutbe'] = aktif_kullanici['rutbe_adi']
+        session['user_level'] = aktif_kullanici['level']
+
     cursor.execute("SELECT MAX(level) AS max_level FROM rutbeler")
     max_level_res = cursor.fetchone()
     max_level = max_level_res['max_level'] if max_level_res else 0
@@ -325,6 +414,7 @@ def dashboard():
 
     is_top_manager = (int(user_level) == int(max_level)) or any(k in user_rutbe for k in ['kurucu', 'genel', 'yönetici'])
     can_add_employee = int(user_level) >= 50 or is_top_manager
+    can_edit_personnel = session.get('user_rutbe') in {'Genel Sekreter', 'System Admin'}
 
     cursor.execute("SELECT COALESCE(SUM(fiyat), 0) AS toplam_deger, COUNT(*) AS toplam_esya FROM esyalar")
     esya_stats = cursor.fetchone()
@@ -347,7 +437,8 @@ def dashboard():
     }
 
     cursor.execute("""
-        SELECT c.id, c.ad_soyad, c.eposta, c.rutbe_id, c.manager_id, r.rutbe_adi, r.level,
+        SELECT c.id, c.ad_soyad, c.eposta, c.tc_no, c.birim, c.calisma_yeri, c.calisma_durumu,
+               c.rutbe_id, c.manager_id, r.rutbe_adi, r.level,
                m.ad_soyad AS amir_adi, mr.rutbe_adi AS amir_rutbe
         FROM calisanlar c
         JOIN rutbeler r ON c.rutbe_id = r.id
@@ -356,9 +447,30 @@ def dashboard():
         ORDER BY r.level DESC, c.ad_soyad ASC
     """)
     calisanlar = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT teslim_alan_id, COUNT(*) AS aktif_zimmet_sayisi
+        FROM zimmetler
+        WHERE iade_tarihi IS NULL
+        GROUP BY teslim_alan_id
+    """)
+    aktif_zimmet_sayilari = {
+        row['teslim_alan_id']: row['aktif_zimmet_sayisi']
+        for row in cursor.fetchall()
+    }
+    for calisan in calisanlar:
+        calisan['aktif_zimmet_sayisi'] = aktif_zimmet_sayilari.get(calisan['id'], 0)
     
     cursor.execute("SELECT id, ad_soyad FROM calisanlar")
     tum_calisanlar = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT DISTINCT konum
+        FROM esyalar
+        WHERE konum IS NOT NULL AND TRIM(konum) <> ''
+        ORDER BY konum
+    """)
+    rapor_birimleri = [row['konum'] for row in cursor.fetchall()]
 
     if is_top_manager:
         cursor.execute("SELECT id, rutbe_adi, level FROM rutbeler ORDER BY level DESC")
@@ -369,14 +481,16 @@ def dashboard():
     cursor.execute("SELECT id, rutbe_adi FROM rutbeler ORDER BY level DESC")
     rutbeler = cursor.fetchall()
     
-    cursor.execute("SELECT id, esya_adi, seri_no, fiyat, fatura_pdf, garanti_bitis, kategori, konum, durum FROM esyalar WHERE durum IN ('Bosta', 'Bakimda')")
-    bosta_esyalar = cursor.fetchall()
+    # Envanter tüm eşyaları göstermelidir.
+    cursor.execute("SELECT id, esya_adi, seri_no, fiyat, fatura_pdf, garanti_bitis, kategori, konum, durum FROM esyalar ORDER BY esya_adi, seri_no")
+    envanter_esyalari = cursor.fetchall()
+    bosta_esyalar = [esya for esya in envanter_esyalari if esya['durum'] == 'Bosta']
     
     cursor.execute("""
         SELECT z.id, z.esya_id, e.esya_adi, e.seri_no, e.fiyat, e.fatura_pdf, e.garanti_bitis, e.kategori,
                c_alan.ad_soyad AS alan_personel,
                c_veren.ad_soyad AS veren_amir,
-               z.zimmet_tarihi, z.tahmini_iade_tarihi
+               z.zimmet_tarihi, z.tahmini_iade_tarihi, z.imzali_tutanak_pdf
         FROM zimmetler z
         JOIN esyalar e ON z.esya_id = e.id
         JOIN calisanlar c_alan ON z.teslim_alan_id = c_alan.id
@@ -390,7 +504,7 @@ def dashboard():
         SELECT z.id, e.esya_adi, e.seri_no, e.fiyat, e.fatura_pdf,
                c_alan.ad_soyad AS alan_personel,
                c_veren.ad_soyad AS veren_amir,
-               z.zimmet_tarihi, z.iade_tarihi
+               z.zimmet_tarihi, z.iade_tarihi, z.imzali_tutanak_pdf
         FROM zimmetler z
         JOIN esyalar e ON z.esya_id = e.id
         JOIN calisanlar c_alan ON z.teslim_alan_id = c_alan.id
@@ -417,9 +531,12 @@ def dashboard():
                            stats=stats,
                            calisanlar=calisanlar, 
                            tum_calisanlar=tum_calisanlar, 
+                           rapor_birimleri=rapor_birimleri,
                            rutbeler=rutbeler,
                            eklenebilir_rutbeler=eklenebilir_rutbeler,
                            can_add_employee=can_add_employee,
+                           can_edit_personnel=can_edit_personnel,
+                           envanter_esyalari=envanter_esyalari,
                            bosta_esyalar=bosta_esyalar, 
                            aktif_zimmetler=aktif_zimmetler,
                            gecmis_zimmetler=gecmis_zimmetler,
@@ -438,8 +555,20 @@ def esya_guncelle(id):
     garanti_bitis = request.form.get('garanti_bitis') if request.form.get('garanti_bitis') else None
 
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
     try:
+        cursor.execute("SELECT durum FROM esyalar WHERE id = %s", (id,))
+        mevcut_esya = cursor.fetchone()
+        if not mevcut_esya:
+            flash("Hata: Güncellenecek eşya bulunamadı.", "danger")
+            return redirect(url_for('dashboard'))
+
+        # Aktif zimmet, yalnızca iade işlemiyle kapatılabilir. Düzenleme
+        # formundan durum değiştirmek aktif zimmet kaydını yetimsiz bırakmamalı.
+        if mevcut_esya['durum'] == 'Zimmetli' and durum != 'Zimmetli':
+            flash("Aktif zimmetli eşyanın durumu değiştirilemez. Önce iade alın.", "warning")
+            return redirect(url_for('dashboard'))
+
         cursor.execute("""
             UPDATE esyalar 
             SET esya_adi = %s, seri_no = %s, fiyat = %s, kategori = %s, konum = %s, durum = %s, garanti_bitis = %s
@@ -532,11 +661,28 @@ def zimmet_pdf(zimmet_id):
         fontName=BOLD_FONT_NAME
     )
 
-    logo_path = os.path.join(app.root_path, 'static', 'img', 'YKH Logo Yatay.png')
-    if not os.path.exists(logo_path):
-        logo_path = os.path.join(app.root_path, 'YKH Logo Yatay.png')
-    if os.path.exists(logo_path):
-        story.append(Image(logo_path, width=220, height=55))
+    dika_logo_path = os.path.join(app.root_path, 'static', 'img', 'Saydam Beyaz (2) (1).png')
+    ykh_logo_path = os.path.join(app.root_path, 'static', 'img', 'YKH Logo Yatay.png')
+    if not os.path.exists(ykh_logo_path):
+        ykh_logo_path = os.path.join(app.root_path, 'YKH Logo Yatay.png')
+
+    # DİKA logosu beyaz/şeffaf olduğundan koyu başlık şeridinde kullanılır.
+    # Bakanlık/YKH logosu ise aynı şeritte sağ üstte yer alır.
+    sol_logo = Image(dika_logo_path, width=105, height=57) if os.path.exists(dika_logo_path) else ''
+    sag_logo = Image(ykh_logo_path, width=180, height=44) if os.path.exists(ykh_logo_path) else ''
+    if sol_logo or sag_logo:
+        logo_tablosu = Table([[sol_logo, sag_logo]], colWidths=[150, 390])
+        logo_tablosu.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#1a252f')),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+            ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+            ('LEFTPADDING', (0, 0), (0, 0), 12),
+            ('RIGHTPADDING', (1, 0), (1, 0), 12),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        story.append(logo_tablosu)
         story.append(Spacer(1, 15))
     story.append(Paragraph("<b>T.C. DİCLE KALKINMA AJANSI</b>", title_style))
     story.append(Paragraph("<b>TAŞINIR MAL ZİMMET VE TESLİM TUTANAĞI</b>", title_style))
@@ -608,7 +754,7 @@ def calisan_ekle():
     is_top_manager = (int(user_level) == int(max_level)) or any(k in user_rutbe for k in ['kurucu', 'genel', 'yönetici'])
 
     if int(user_level) < 50 and not is_top_manager:
-        flash("Yetki Hatası: Yeni çalışan eklemek için en az Birim Amiri rütbesine sahip olmalısınız!", "danger")
+        flash("Yetki Hatası: Yeni çalışan eklemek için yeterli rütbe yetkiniz bulunmuyor!", "danger")
         cursor.close()
         conn.close()
         return redirect(url_for('dashboard'))
@@ -617,6 +763,12 @@ def calisan_ekle():
     eposta = request.form['eposta']
     rutbe_id = request.form['rutbe_id']
     manager_id = request.form['manager_id'] if request.form['manager_id'] else None
+
+    if int(rutbe_id) == 1 and ad_soyad.strip().casefold() != 'aykut aniç':
+        flash("Genel Sekreter rütbesi yalnızca Aykut Aniç için tanımlıdır.", "danger")
+        cursor.close()
+        conn.close()
+        return redirect(url_for('dashboard'))
 
     cursor.execute("SELECT level, rutbe_adi FROM rutbeler WHERE id = %s", (rutbe_id,))
     target_rutbe = cursor.fetchone()
@@ -641,6 +793,149 @@ def calisan_ekle():
         flash("Yeni çalışan başarıyla eklendi.", "success")
     except mysql.connector.Error as err:
         flash(f"Hata: {err}", "danger")
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('dashboard'))
+
+
+@app.route('/calisan-guncelle/<int:id>', methods=['POST'])
+@login_required
+def calisan_guncelle(id):
+    """Personel bilgilerini yalnızca Genel Sekreter ve System Admin güncelleyebilir."""
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        cursor.execute("""
+            SELECT r.rutbe_adi
+            FROM calisanlar c
+            JOIN rutbeler r ON r.id = c.rutbe_id
+            WHERE c.id = %s
+        """, (session['user_id'],))
+        yetkili_kullanici = cursor.fetchone()
+        if not yetkili_kullanici or yetkili_kullanici['rutbe_adi'] not in {'Genel Sekreter', 'System Admin'}:
+            flash("Yetki Hatası: Personel bilgilerini yalnızca Genel Sekreter ve System Admin düzenleyebilir.", "danger")
+            return redirect(url_for('dashboard'))
+
+        ad_soyad = request.form['ad_soyad'].strip()
+        eposta = request.form['eposta'].strip()
+        tc_no = request.form.get('tc_no', '').strip() or None
+        birim = request.form.get('birim', '').strip() or None
+        calisma_yeri = request.form.get('calisma_yeri', '').strip() or None
+        calisma_durumu = request.form.get('calisma_durumu', '').strip() or None
+        rutbe_id = int(request.form['rutbe_id'])
+        manager_id = request.form.get('manager_id') or None
+
+        if manager_id and int(manager_id) == id:
+            flash("Çalışan kendi üst amiri olarak atanamaz.", "danger")
+            return redirect(url_for('dashboard'))
+        if rutbe_id == 1 and ad_soyad.casefold() != 'aykut aniç':
+            flash("Genel Sekreter rütbesi yalnızca Aykut Aniç için tanımlıdır.", "danger")
+            return redirect(url_for('dashboard'))
+
+        cursor.execute("SELECT id FROM calisanlar WHERE id = %s", (id,))
+        if not cursor.fetchone():
+            flash("Hata: Güncellenecek çalışan bulunamadı.", "danger")
+            return redirect(url_for('dashboard'))
+
+        cursor.execute("SELECT id FROM rutbeler WHERE id = %s", (rutbe_id,))
+        if not cursor.fetchone():
+            flash("Hata: Seçilen rütbe bulunamadı.", "danger")
+            return redirect(url_for('dashboard'))
+
+        cursor.execute("""
+            UPDATE calisanlar
+            SET ad_soyad = %s, eposta = %s, tc_no = %s, birim = %s, calisma_yeri = %s,
+                calisma_durumu = %s, rutbe_id = %s, manager_id = %s
+            WHERE id = %s
+        """, (ad_soyad, eposta, tc_no, birim, calisma_yeri, calisma_durumu, rutbe_id, manager_id, id))
+        conn.commit()
+
+        if id == session['user_id']:
+            session['user_name'] = ad_soyad
+        log_ekle(session['user_id'], "Çalışan Güncellendi", f"Personel bilgileri güncellendi: {ad_soyad}")
+        flash("Personel bilgileri güncellendi.", "success")
+    except mysql.connector.Error as err:
+        conn.rollback()
+        flash(f"Hata: {err}", "danger")
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('dashboard'))
+
+
+@app.route('/zimmet-toplu-devir/<int:kaynak_calisan_id>', methods=['POST'])
+@login_required
+def zimmet_toplu_devir(kaynak_calisan_id):
+    """Bir çalışanın aktif zimmetlerini geçmişi koruyarak başka bir çalışana devreder."""
+    hedef_calisan_id = request.form.get('hedef_calisan_id', type=int)
+    if not hedef_calisan_id or hedef_calisan_id == kaynak_calisan_id:
+        flash("Zimmet devri için kaynak kişiden farklı bir hedef personel seçin.", "danger")
+        return redirect(url_for('dashboard'))
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT r.rutbe_adi
+            FROM calisanlar c
+            JOIN rutbeler r ON r.id = c.rutbe_id
+            WHERE c.id = %s
+        """, (session['user_id'],))
+        yetkili_kullanici = cursor.fetchone()
+        if not yetkili_kullanici or yetkili_kullanici['rutbe_adi'] not in {'Genel Sekreter', 'System Admin'}:
+            flash("Yetki Hatası: Toplu zimmet devrini yalnızca Genel Sekreter ve System Admin yapabilir.", "danger")
+            return redirect(url_for('dashboard'))
+
+        cursor.execute("SELECT ad_soyad FROM calisanlar WHERE id = %s", (kaynak_calisan_id,))
+        kaynak_calisan = cursor.fetchone()
+        cursor.execute("SELECT ad_soyad FROM calisanlar WHERE id = %s", (hedef_calisan_id,))
+        hedef_calisan = cursor.fetchone()
+        if not kaynak_calisan or not hedef_calisan:
+            flash("Kaynak veya hedef personel bulunamadı.", "danger")
+            return redirect(url_for('dashboard'))
+
+        # Aktif kayıtlar kilitlenir; böylece eşzamanlı iade/devir işlemleri
+        # aynı eşyayı iki kişiye atayamaz.
+        cursor.execute("""
+            SELECT id, esya_id, tahmini_iade_tarihi
+            FROM zimmetler
+            WHERE teslim_alan_id = %s AND iade_tarihi IS NULL
+            FOR UPDATE
+        """, (kaynak_calisan_id,))
+        aktif_zimmetler = cursor.fetchall()
+        if not aktif_zimmetler:
+            flash(f"{kaynak_calisan['ad_soyad']} üzerinde devredilecek aktif zimmet bulunmuyor.", "warning")
+            return redirect(url_for('dashboard'))
+
+        zimmet_idleri = [zimmet['id'] for zimmet in aktif_zimmetler]
+        yer_tutucular = ', '.join(['%s'] * len(zimmet_idleri))
+        cursor.execute(
+            f"UPDATE zimmetler SET iade_tarihi = NOW() WHERE id IN ({yer_tutucular})",
+            zimmet_idleri,
+        )
+        cursor.executemany("""
+            INSERT INTO zimmetler (esya_id, teslim_alan_id, zimmetleyen_id, tahmini_iade_tarihi)
+            VALUES (%s, %s, %s, %s)
+        """, [
+            (zimmet['esya_id'], hedef_calisan_id, session['user_id'], zimmet['tahmini_iade_tarihi'])
+            for zimmet in aktif_zimmetler
+        ])
+        conn.commit()
+
+        adet = len(aktif_zimmetler)
+        log_ekle(
+            session['user_id'],
+            "Toplu Zimmet Devri",
+            f"{adet} eşya, {kaynak_calisan['ad_soyad']} kişisinden {hedef_calisan['ad_soyad']} kişisine devredildi.",
+        )
+        flash(f"{adet} aktif zimmet, {hedef_calisan['ad_soyad']} kişisine devredildi.", "success")
+    except mysql.connector.Error as err:
+        conn.rollback()
+        flash(f"Toplu zimmet devri yapılamadı: {err}", "danger")
     finally:
         cursor.close()
         conn.close()
@@ -679,7 +974,7 @@ def esya_ekle():
     seri_no = request.form['seri_no']
     fiyat = request.form.get('fiyat', 0.0)
     kategori = request.form.get('kategori', 'Genel')
-    konum = request.form.get('konum', 'Merkez Depo')
+    konum = request.form.get('birim') or request.form.get('konum', 'Merkez Depo')
     garanti_bitis = request.form.get('garanti_bitis') if request.form.get('garanti_bitis') else None
     
     fatura_filename = None
@@ -738,12 +1033,33 @@ def zimmet_ver():
         conn.close()
         return redirect(url_for('dashboard'))
 
+    # Aynı eşyanın iki kez zimmetlenmesini önlemek için kaydı kilitleyip
+    # sadece boşta ise tek işlem içinde zimmetli duruma geçiriyoruz.
+    cursor.execute("SELECT durum FROM esyalar WHERE id = %s FOR UPDATE", (esya_id,))
+    esya_durumu = cursor.fetchone()
+    if not esya_durumu:
+        flash("Hata: Seçilen eşya bulunamadı.", "danger")
+        cursor.close()
+        conn.close()
+        return redirect(url_for('dashboard'))
+    if esya_durumu['durum'] != 'Bosta':
+        flash("Bu eşya artık boşta değil; zimmetlenemez.", "warning")
+        cursor.close()
+        conn.close()
+        return redirect(url_for('dashboard'))
+
+    cursor.execute("UPDATE esyalar SET durum = 'Zimmetli' WHERE id = %s AND durum = 'Bosta'", (esya_id,))
+    if cursor.rowcount != 1:
+        conn.rollback()
+        flash("Eşyanın durumu değiştiği için zimmetleme yapılamadı. Sayfayı yenileyin.", "warning")
+        cursor.close()
+        conn.close()
+        return redirect(url_for('dashboard'))
+
     cursor.execute("""
         INSERT INTO zimmetler (esya_id, teslim_alan_id, zimmetleyen_id, tahmini_iade_tarihi) 
         VALUES (%s, %s, %s, %s)
     """, (esya_id, teslim_alan_id, zimmetleyen_id, tahmini_iade))
-    
-    cursor.execute("UPDATE esyalar SET durum = 'Zimmetli' WHERE id = %s", (esya_id,))
     
     cursor.execute("SELECT ad_soyad FROM calisanlar WHERE id = %s", (teslim_alan_id,))
     alan_adi = cursor.fetchone()['ad_soyad']
@@ -782,18 +1098,16 @@ def zimmet_iade(zimmet_id, esya_id):
 
 
 @app.route('/tutanak-yukle/<int:zimmet_id>', methods=['POST'])
+@login_required
 def tutanak_yukle(zimmet_id):
-    if 'user_id' not in session:
-        return redirect('/login')
-
     if 'tutanak_file' not in request.files:
         flash('Dosya seçilmedi!', 'danger')
-        return redirect('/')
+        return redirect(url_for('dashboard'))
 
     file = request.files['tutanak_file']
     if file.filename == '':
-        flash('Dosya seçilmedi!', 'danger')
-        return redirect('/')
+        flash('Lütfen geçerli bir tutanak dosyası seçin!', 'danger')
+        return redirect(url_for('dashboard'))
 
     if file and file.filename.lower().endswith('.pdf'):
         filename = f"tutanak_zimmet_{zimmet_id}_{secure_filename(file.filename)}"
@@ -802,25 +1116,21 @@ def tutanak_yukle(zimmet_id):
 
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute("UPDATE zimmetler SET imzali_tutanak_pdf = %s WHERE id = %s", (filename, zimmet_id))
-        conn.commit()
-        conn.close()
-
-        flash('İmzalı tutanak başarıyla yüklendi.', 'success')
+        try:
+            cursor.execute("UPDATE zimmetler SET imzali_tutanak_pdf = %s WHERE id = %s", (filename, zimmet_id))
+            conn.commit()
+            log_ekle(session['user_id'], "İmzalı Tutanak Yüklendi", f"ZM-{zimmet_id:05d} numaralı zimmet için imzalı tutanak yüklendi.")
+            flash('İmzalı tutanak başarıyla yüklendi.', 'success')
+        except mysql.connector.Error as err:
+            flash(f'Veritabanı güncelleme hatası: {err}', 'danger')
+        finally:
+            cursor.close()
+            conn.close()
     else:
         flash('Sadece PDF formatında dosya yükleyebilirsiniz.', 'warning')
 
-    return redirect('/')
+    return redirect(url_for('dashboard'))
 
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True, ssl_context='adhoc')
-
-# --- İMZALI TUTANAK YÜKLEME ROUTE'U ---
-import os
-from werkzeug.utils import secure_filename
-
-UPLOAD_FOLDER = os.path.join(app.root_path, 'static/uploads')
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
