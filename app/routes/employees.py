@@ -1,4 +1,5 @@
 """Calisan (personel) yonetimi."""
+import mysql.connector
 from flask import Blueprint, flash, redirect, request, session, url_for
 from werkzeug.security import generate_password_hash
 
@@ -234,10 +235,26 @@ def calisan_sil(id):
     c = cursor.fetchone()
 
     if c:
-        cursor.execute("DELETE FROM calisanlar WHERE id = %s", (id,))
-        conn.commit()
-        log_ekle(session['user_id'], "Çalışan Silindi", f"Çalışan sistemden silindi: {c['ad_soyad']}")
-        flash(f"{c['ad_soyad']} isimli çalışan silindi.", "info")
+        # Aktif (iade alinmamis) zimmeti varsa silmeyi engelle; aksi halde
+        # esyalar 'Zimmetli' durumda sahipsiz kalir ve duzenlenemez/silinemez hale gelir.
+        cursor.execute(
+            "SELECT COUNT(*) AS adet FROM zimmetler WHERE teslim_alan_id = %s AND iade_tarihi IS NULL",
+            (id,)
+        )
+        aktif_zimmet_sayisi = cursor.fetchone()['adet']
+
+        if aktif_zimmet_sayisi > 0:
+            flash(
+                f"{c['ad_soyad']} üzerinde {aktif_zimmet_sayisi} adet aktif zimmetli eşya var. "
+                "Önce bu eşyaları iade alın ya da 'Zimmet Toplu Devir' ile başka bir çalışana "
+                "devredin, sonra silme işlemini tekrar deneyin.",
+                "warning"
+            )
+        else:
+            cursor.execute("DELETE FROM calisanlar WHERE id = %s", (id,))
+            conn.commit()
+            log_ekle(session['user_id'], "Çalışan Silindi", f"Çalışan sistemden silindi: {c['ad_soyad']}")
+            flash(f"{c['ad_soyad']} isimli çalışan silindi.", "info")
 
     cursor.close()
     conn.close()

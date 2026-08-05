@@ -1,4 +1,5 @@
 """Esya (envanter) yonetimi ve yuklenen dosya servisi."""
+import mysql.connector
 from flask import Blueprint, current_app, flash, redirect, request, send_from_directory, session, url_for
 from werkzeug.utils import secure_filename
 

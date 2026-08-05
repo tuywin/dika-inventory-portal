@@ -1,4 +1,5 @@
 """CSV disa/ice aktarma ve sablon indirme."""
+import mysql.connector
 import csv
 import io
 from flask import Blueprint, Response, flash, redirect, request, session, url_for
