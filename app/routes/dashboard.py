@@ -1,0 +1,166 @@
+"""Ana panel (dashboard)."""
+from flask import Blueprint, render_template, session
+
+from ..db import get_db
+from ..utils import login_required
+
+bp = Blueprint('dashboard', __name__)
+
+
+@bp.route('/')
+@login_required
+def dashboard():
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    # Rütbe değişiklikleri açık oturumlarda da hemen görünür olsun.
+    cursor.execute("""
+        SELECT r.rutbe_adi, r.level
+        FROM calisanlar c
+        JOIN rutbeler r ON c.rutbe_id = r.id
+        WHERE c.id = %s
+    """, (session['user_id'],))
+    aktif_kullanici = cursor.fetchone()
+    if aktif_kullanici:
+        session['user_rutbe'] = aktif_kullanici['rutbe_adi']
+        session['user_level'] = aktif_kullanici['level']
+
+    cursor.execute("SELECT MAX(level) AS max_level FROM rutbeler")
+    max_level_res = cursor.fetchone()
+    max_level = max_level_res['max_level'] if max_level_res else 0
+
+    user_level = session.get('user_level', 0)
+    user_rutbe = session.get('user_rutbe', '').lower()
+
+    is_top_manager = (int(user_level) == int(max_level)) or any(k in user_rutbe for k in ['kurucu', 'genel', 'yönetici'])
+    can_add_employee = int(user_level) >= 50 or is_top_manager
+    can_edit_personnel = session.get('user_rutbe') in {'Genel Sekreter', 'System Admin'}
+
+    cursor.execute("SELECT COALESCE(SUM(fiyat), 0) AS toplam_deger, COUNT(*) AS toplam_esya FROM esyalar")
+    esya_stats = cursor.fetchone()
+    
+    cursor.execute("SELECT COUNT(*) AS bosta_count FROM esyalar WHERE durum = 'Bosta'")
+    bosta_count = cursor.fetchone()['bosta_count']
+    
+    cursor.execute("SELECT COUNT(*) AS zimmetli_count FROM esyalar WHERE durum = 'Zimmetli'")
+    zimmetli_count = cursor.fetchone()['zimmetli_count']
+
+    cursor.execute("SELECT COUNT(*) AS calisan_count FROM calisanlar")
+    calisan_count = cursor.fetchone()['calisan_count']
+
+    stats = {
+        'toplam_deger': esya_stats['toplam_deger'],
+        'toplam_esya': esya_stats['toplam_esya'],
+        'bosta_count': bosta_count,
+        'zimmetli_count': zimmetli_count,
+        'calisan_count': calisan_count
+    }
+
+    cursor.execute("""
+        SELECT c.id, c.ad_soyad, c.eposta, c.tc_no, c.birim, c.calisma_yeri, c.calisma_durumu,
+               c.rutbe_id, c.manager_id, r.rutbe_adi, r.level,
+               m.ad_soyad AS amir_adi, mr.rutbe_adi AS amir_rutbe
+        FROM calisanlar c
+        JOIN rutbeler r ON c.rutbe_id = r.id
+        LEFT JOIN calisanlar m ON c.manager_id = m.id
+        LEFT JOIN rutbeler mr ON m.rutbe_id = mr.id
+        ORDER BY r.level DESC, c.ad_soyad ASC
+    """)
+    calisanlar = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT teslim_alan_id, COUNT(*) AS aktif_zimmet_sayisi
+        FROM zimmetler
+        WHERE iade_tarihi IS NULL
+        GROUP BY teslim_alan_id
+    """)
+    aktif_zimmet_sayilari = {
+        row['teslim_alan_id']: row['aktif_zimmet_sayisi']
+        for row in cursor.fetchall()
+    }
+    for calisan in calisanlar:
+        calisan['aktif_zimmet_sayisi'] = aktif_zimmet_sayilari.get(calisan['id'], 0)
+    
+    cursor.execute("SELECT id, ad_soyad FROM calisanlar")
+    tum_calisanlar = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT DISTINCT konum
+        FROM esyalar
+        WHERE konum IS NOT NULL AND TRIM(konum) <> ''
+        ORDER BY konum
+    """)
+    rapor_birimleri = [row['konum'] for row in cursor.fetchall()]
+
+    if is_top_manager:
+        cursor.execute("SELECT id, rutbe_adi, level FROM rutbeler ORDER BY level DESC")
+    else:
+        cursor.execute("SELECT id, rutbe_adi, level FROM rutbeler WHERE level < %s ORDER BY level DESC", (user_level,))
+    eklenebilir_rutbeler = cursor.fetchall()
+
+    cursor.execute("SELECT id, rutbe_adi FROM rutbeler ORDER BY level DESC")
+    rutbeler = cursor.fetchall()
+    
+    # Envanter tüm eşyaları göstermelidir. Zimmetli eşyaları burada
+    # filtrelemek, eşya silinmemiş olsa bile kullanıcıya kaybolmuş gibi gösteriyordu.
+    cursor.execute("SELECT id, esya_adi, seri_no, fiyat, fatura_pdf, garanti_bitis, kategori, konum, durum FROM esyalar ORDER BY esya_adi, seri_no")
+    envanter_esyalari = cursor.fetchall()
+    bosta_esyalar = [esya for esya in envanter_esyalari if esya['durum'] == 'Bosta']
+    
+    cursor.execute("""
+        SELECT z.id, z.esya_id, e.esya_adi, e.seri_no, e.fiyat, e.fatura_pdf, e.garanti_bitis, e.kategori,
+               c_alan.ad_soyad AS alan_personel,
+               c_veren.ad_soyad AS veren_amir,
+               z.zimmet_tarihi, z.tahmini_iade_tarihi
+        FROM zimmetler z
+        JOIN esyalar e ON z.esya_id = e.id
+        JOIN calisanlar c_alan ON z.teslim_alan_id = c_alan.id
+        JOIN calisanlar c_veren ON z.zimmetleyen_id = c_veren.id
+        WHERE z.iade_tarihi IS NULL
+        ORDER BY z.zimmet_tarihi DESC
+    """)
+    aktif_zimmetler = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT z.id, e.esya_adi, e.seri_no, e.fiyat, e.fatura_pdf,
+               c_alan.ad_soyad AS alan_personel,
+               c_veren.ad_soyad AS veren_amir,
+               z.zimmet_tarihi, z.iade_tarihi
+        FROM zimmetler z
+        JOIN esyalar e ON z.esya_id = e.id
+        JOIN calisanlar c_alan ON z.teslim_alan_id = c_alan.id
+        JOIN calisanlar c_veren ON z.zimmetleyen_id = c_veren.id
+        WHERE z.iade_tarihi IS NOT NULL
+        ORDER BY z.iade_tarihi DESC
+    """)
+    gecmis_zimmetler = cursor.fetchall()
+
+    loglar = []
+    if is_top_manager:
+        cursor.execute("""
+            SELECT l.id, l.islem, l.detay, l.tarih, c.ad_soyad 
+            FROM loglar l
+            LEFT JOIN calisanlar c ON l.user_id = c.id
+            ORDER BY l.tarih DESC LIMIT 100
+        """)
+        loglar = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+    
+    return render_template('index.html', 
+                           stats=stats,
+                           calisanlar=calisanlar, 
+                           tum_calisanlar=tum_calisanlar, 
+                           rapor_birimleri=rapor_birimleri,
+                           rutbeler=rutbeler,
+                           eklenebilir_rutbeler=eklenebilir_rutbeler,
+                           can_add_employee=can_add_employee,
+                           can_edit_personnel=can_edit_personnel,
+                           envanter_esyalari=envanter_esyalari,
+                           bosta_esyalar=bosta_esyalar, 
+                           aktif_zimmetler=aktif_zimmetler,
+                           gecmis_zimmetler=gecmis_zimmetler,
+                           is_top_manager=is_top_manager,
+                           loglar=loglar)
+

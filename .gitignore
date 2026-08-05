@@ -27,5 +27,4 @@ static/uploads/*
 app.py.bak
 *.zip
 dika.db
-app/
-main.py
+app.py.eski
