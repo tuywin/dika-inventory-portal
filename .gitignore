@@ -23,3 +23,9 @@ static/uploads/*
 .DS_Store
 .vscode/
 .idea/
+
+app.py.bak
+*.zip
+dika.db
+app/
+main.py
