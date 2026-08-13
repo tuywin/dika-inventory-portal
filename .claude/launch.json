@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dika",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["main.py"],
+      "port": 5000,
+      "url": "https://localhost:5000"
+    }
+  ]
+}

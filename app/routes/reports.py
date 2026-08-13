@@ -63,9 +63,9 @@ def export_csv():
 def download_template():
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['esya_adi', 'seri_no', 'kategori', 'konum', 'fiyat', 'garanti_bitis'])
-    writer.writerow(['MacBook Pro 16', 'SN-MAC-2026-001', 'Elektronik', 'Oda 101', '45000.00', '2028-12-31'])
-    writer.writerow(['Ofis Koltuğu', 'SN-KLT-2026-002', 'Mobilya', 'Toplantı Salonu', '3500.00', ''])
+    writer.writerow(['esya_adi', 'seri_no', 'kategori', 'konum', 'fiyat', 'garanti_bitis', 'zimmetli_personel_eposta'])
+    writer.writerow(['MacBook Pro 16', 'SN-MAC-2026-001', 'Elektronik', 'Oda 101', '45000.00', '2028-12-31', 'ornek.personel@dika.gov.tr'])
+    writer.writerow(['Ofis Koltuğu', 'SN-KLT-2026-002', 'Mobilya', 'Toplantı Salonu', '3500.00', '', ''])
 
     response = Response(output.getvalue(), mimetype="text/csv")
     response.headers["Content-Disposition"] = "attachment; filename=DIKA_Envanter_Yukleme_Sablonu.csv"
@@ -95,8 +95,18 @@ def import_csv():
         header = next(csv_input)
 
         conn = get_db()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
+
+        zimmetleyen_id = session['user_id']
+        cursor.execute("""
+            SELECT r.level FROM calisanlar c JOIN rutbeler r ON c.rutbe_id = r.id WHERE c.id = %s
+        """, (zimmetleyen_id,))
+        zimmetleyen_satiri = cursor.fetchone()
+        zimmetleyen_level = zimmetleyen_satiri['level'] if zimmetleyen_satiri else 0
+
         eklenen_sayi = 0
+        zimmetlenen_sayi = 0
+        atlanan_zimmetler = []
 
         for row in csv_input:
             if len(row) >= 5:
@@ -109,13 +119,44 @@ def import_csv():
                 except:
                     fiyat = 0.0
                 garanti_bitis = row[5].strip() if len(row) > 5 and row[5].strip() else None
+                zimmetli_eposta = row[6].strip() if len(row) > 6 and row[6].strip() else None
+
+                # Satırda personel e-postası verilmişse eşya dogrudan o kişiye
+                # zimmetli olarak eklenir; verilmemişse (satır bos) 'Bosta' kalir.
+                hedef_calisan = None
+                if zimmetli_eposta:
+                    cursor.execute("""
+                        SELECT c.id, r.level FROM calisanlar c
+                        JOIN rutbeler r ON c.rutbe_id = r.id
+                        WHERE c.eposta = %s
+                    """, (zimmetli_eposta,))
+                    hedef_calisan = cursor.fetchone()
+
+                    if not hedef_calisan:
+                        atlanan_zimmetler.append(f"{seri_no}: '{zimmetli_eposta}' eşleşen personel bulunamadı")
+                    elif hedef_calisan['id'] == zimmetleyen_id:
+                        atlanan_zimmetler.append(f"{seri_no}: kendinize zimmetleyemezsiniz")
+                        hedef_calisan = None
+                    elif zimmetleyen_level <= hedef_calisan['level']:
+                        atlanan_zimmetler.append(f"{seri_no}: '{zimmetli_eposta}' sizden üst/eşit rütbeli, zimmetlenemedi")
+                        hedef_calisan = None
+
+                durum = 'Zimmetli' if hedef_calisan else 'Bosta'
 
                 try:
                     cursor.execute("""
                         INSERT INTO esyalar (esya_adi, seri_no, kategori, konum, fiyat, garanti_bitis, durum)
-                        VALUES (%s, %s, %s, %s, %s, %s, 'Bosta')
-                    """, (esya_adi, seri_no, kategori, konum, fiyat, garanti_bitis))
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, (esya_adi, seri_no, kategori, konum, fiyat, garanti_bitis, durum))
+                    esya_id = cursor.lastrowid
                     eklenen_sayi += 1
+
+                    if hedef_calisan:
+                        cursor.execute("""
+                            INSERT INTO zimmetler (esya_id, teslim_alan_id, zimmetleyen_id)
+                            VALUES (%s, %s, %s)
+                        """, (esya_id, hedef_calisan['id'], zimmetleyen_id))
+                        zimmetlenen_sayi += 1
                 except mysql.connector.Error:
                     continue
 
@@ -123,8 +164,19 @@ def import_csv():
         cursor.close()
         conn.close()
 
-        log_ekle(session['user_id'], "Toplu Envanter Yüklendi", f"Excel/CSV dosyası ile {eklenen_sayi} adet eşya envantere aktarıldı.")
-        flash(f"Tebrikler! Dosyadaki {eklenen_sayi} adet eşya envantere başarıyla aktarıldı.", "success")
+        detay = f"Excel/CSV dosyası ile {eklenen_sayi} adet eşya envantere aktarıldı ({zimmetlenen_sayi} adedi doğrudan personele zimmetlendi)."
+        if atlanan_zimmetler:
+            detay += " Zimmetlenemeyenler: " + "; ".join(atlanan_zimmetler)
+        log_ekle(session['user_id'], "Toplu Envanter Yüklendi", detay)
+
+        mesaj = f"Tebrikler! Dosyadaki {eklenen_sayi} adet eşya envantere aktarıldı"
+        mesaj += f" ({zimmetlenen_sayi} adedi personele zimmetlendi)." if zimmetlenen_sayi else "."
+        flash(mesaj, "success")
+        if atlanan_zimmetler:
+            ozet = "; ".join(atlanan_zimmetler[:5])
+            if len(atlanan_zimmetler) > 5:
+                ozet += f" ve {len(atlanan_zimmetler) - 5} satır daha"
+            flash(f"{len(atlanan_zimmetler)} satırda zimmet ataması yapılamadı, eşya boşta eklendi: {ozet}", "warning")
 
     except Exception as e:
         flash(f"Dosya okuma hatası: {e}", "danger")

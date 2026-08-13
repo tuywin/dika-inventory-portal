@@ -59,6 +59,7 @@
               <div class="modal-body text-start">
                   <p class="small text-muted mb-3">
                       Elinizdeki envanter listesini tek tıkla veritabanına aktarabilirsiniz. Dosya formatının doğru olması için önceden örnek şablonu inceleyebilirsiniz.
+                      <br><b>zimmetli_personel_eposta</b> sütununa bir personelin e-postası yazılırsa eşya doğrudan o kişiye zimmetli olarak eklenir; sütun boş bırakılırsa eşya <b>boşta</b> olarak yüklenir.
                   </p>
                   <div class="mb-3">
                       <a href="/download-template" class="btn btn-sm btn-outline-primary w-100 fw-bold">📑 Örnek Yükleme Şablonunu İndir (.csv)</a>
@@ -321,9 +322,9 @@
                     <span>🏢 Tüm Envanter & Eşya Yönetimi</span>
                     <span class="badge bg-light text-dark">{{ envanter_esyalari|length }} Adet</span>
                 </div>
-                <div class="card-body p-0">
+                <div class="card-body p-0" style="max-height: 450px; overflow-y: auto;">
                     <table class="table table-hover mb-0 align-middle searchable-table">
-                        <thead class="table-light">
+                        <thead class="table-light sticky-top">
                             <tr>
                                 <th>Eşya Adı</th>
                                 <th>Kategori / Konum</th>
@@ -430,9 +431,9 @@
                     <span>👥 Çalışan Hiyerarşisi ve Üst Amir İlişkileri</span>
                     <span class="badge bg-light text-dark">{{ calisanlar|length }} Personel</span>
                 </div>
-                <div class="card-body p-0">
+                <div class="card-body p-0" style="max-height: 450px; overflow-y: auto;">
                     <table class="table table-hover mb-0 searchable-table">
-                        <thead class="table-light">
+                        <thead class="table-light sticky-top">
                             <tr>
                                 <th>Ad Soyad</th>
                                 <th>Rütbe</th>
@@ -584,9 +585,9 @@
                     <span>📋 Aktif Zimmet Kayıtları</span>
                     <span class="badge bg-dark">{{ aktif_zimmetler|length }} Adet</span>
                 </div>
-                <div class="card-body p-0">
+                <div class="card-body p-0" style="max-height: 450px; overflow-y: auto;">
                     <table class="table table-hover mb-0 align-middle searchable-table">
-                        <thead class="table-light">
+                        <thead class="table-light sticky-top">
                             <tr>
                                 <th>Eşya Bilgisi</th>
                                 <th>Fiyat / Fatura</th>
@@ -677,9 +678,9 @@
             <!-- 3. Geçmiş Zimmet Hareketleri -->
             <div class="card shadow-sm border-0 mb-4">
                 <div class="card-header bg-secondary text-white fw-bold">📜 Geçmiş Zimmet Hareketleri (Teslim Edilenler)</div>
-                <div class="card-body p-0">
+                <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
                     <table class="table table-hover mb-0 searchable-table">
-                        <thead class="table-light">
+                        <thead class="table-light sticky-top">
                             <tr>
                                 <th>Eşya Bilgisi</th>
                                 <th>Fiyat</th>
