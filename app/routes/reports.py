@@ -107,6 +107,7 @@ def import_csv():
         eklenen_sayi = 0
         zimmetlenen_sayi = 0
         atlanan_zimmetler = []
+        atlanan_kayitlar = []
 
         for row in csv_input:
             if len(row) >= 5:
@@ -157,7 +158,14 @@ def import_csv():
                             VALUES (%s, %s, %s)
                         """, (esya_id, hedef_calisan['id'], zimmetleyen_id))
                         zimmetlenen_sayi += 1
-                except mysql.connector.Error:
+                except mysql.connector.Error as err:
+                    # Ayni seri no veritabaninda veya dosyanin baska bir
+                    # satirinda zaten varsa INSERT burada reddedilir; satir
+                    # kullaniciya acikca raporlanir, sessizce atlanmaz.
+                    if err.errno == 1062:
+                        atlanan_kayitlar.append(f"{seri_no}: bu seri no zaten kayıtlı")
+                    else:
+                        atlanan_kayitlar.append(f"{seri_no}: {err.msg}")
                     continue
 
         conn.commit()
@@ -167,6 +175,8 @@ def import_csv():
         detay = f"Excel/CSV dosyası ile {eklenen_sayi} adet eşya envantere aktarıldı ({zimmetlenen_sayi} adedi doğrudan personele zimmetlendi)."
         if atlanan_zimmetler:
             detay += " Zimmetlenemeyenler: " + "; ".join(atlanan_zimmetler)
+        if atlanan_kayitlar:
+            detay += " Eklenemeyen satırlar: " + "; ".join(atlanan_kayitlar)
         log_ekle(session['user_id'], "Toplu Envanter Yüklendi", detay)
 
         mesaj = f"Tebrikler! Dosyadaki {eklenen_sayi} adet eşya envantere aktarıldı"
@@ -177,6 +187,11 @@ def import_csv():
             if len(atlanan_zimmetler) > 5:
                 ozet += f" ve {len(atlanan_zimmetler) - 5} satır daha"
             flash(f"{len(atlanan_zimmetler)} satırda zimmet ataması yapılamadı, eşya boşta eklendi: {ozet}", "warning")
+        if atlanan_kayitlar:
+            ozet = "; ".join(atlanan_kayitlar[:5])
+            if len(atlanan_kayitlar) > 5:
+                ozet += f" ve {len(atlanan_kayitlar) - 5} satır daha"
+            flash(f"{len(atlanan_kayitlar)} satır envantere hiç eklenemedi: {ozet}", "danger")
 
     except Exception as e:
         flash(f"Dosya okuma hatası: {e}", "danger")
