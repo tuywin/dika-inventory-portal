@@ -146,7 +146,7 @@ def zimmet_pdf(zimmet_id):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
-        SELECT z.id, e.esya_adi, e.seri_no, e.fiyat,
+        SELECT z.id, e.esya_adi, e.seri_no, e.adet, e.fiyat,
                c_alan.ad_soyad AS alan_personel, r_alan.rutbe_adi AS alan_rutbe,
                c_veren.ad_soyad AS veren_amir, r_veren.rutbe_adi AS veren_rutbe,
                z.zimmet_tarihi
@@ -234,6 +234,7 @@ def zimmet_pdf(zimmet_id):
         [Paragraph("Teslim Alan (Personel):", bold_style), Paragraph(f"{z['alan_personel']} ({z['alan_rutbe']})", normal_style)],
         [Paragraph("Eşya / Cihaz Adı:", bold_style), Paragraph(str(z['esya_adi']), normal_style)],
         [Paragraph("Seri No / Barkod:", bold_style), Paragraph(str(z['seri_no']), normal_style)],
+        [Paragraph("Adet:", bold_style), Paragraph(str(z['adet']), normal_style)],
         [Paragraph("Kayıtlı Rayiç Fiyatı:", bold_style), Paragraph(f"{z['fiyat']:,.2f} TL", normal_style)],
     ]
 

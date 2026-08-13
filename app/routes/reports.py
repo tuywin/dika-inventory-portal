@@ -29,7 +29,7 @@ def export_csv():
         parametreler.append(birim)
 
     cursor.execute(f"""
-        SELECT e.esya_adi, e.seri_no, e.kategori, e.konum, e.fiyat, e.durum, e.garanti_bitis,
+        SELECT e.esya_adi, e.seri_no, e.adet, e.kategori, e.konum, e.fiyat, e.durum, e.garanti_bitis,
                c.ad_soyad AS zimmetli_personel
         FROM esyalar e
         LEFT JOIN zimmetler z ON z.esya_id = e.id AND z.iade_tarihi IS NULL
@@ -43,11 +43,11 @@ def export_csv():
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['Esya Adi', 'Seri No', 'Kategori', 'Birim', 'Fiyat (TL)', 'Durum', 'Garanti Bitis', 'Zimmetli Personel'])
+    writer.writerow(['Esya Adi', 'Seri No', 'Adet', 'Kategori', 'Birim', 'Fiyat (TL)', 'Durum', 'Garanti Bitis', 'Zimmetli Personel'])
 
     for e in esyalar:
         writer.writerow([
-            e['esya_adi'], e['seri_no'], e['kategori'], e['konum'], e['fiyat'],
+            e['esya_adi'], e['seri_no'], e['adet'], e['kategori'], e['konum'], e['fiyat'],
             e['durum'], e['garanti_bitis'], e['zimmetli_personel'] or ''
         ])
 
@@ -63,9 +63,9 @@ def export_csv():
 def download_template():
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['esya_adi', 'seri_no', 'kategori', 'konum', 'fiyat', 'garanti_bitis', 'zimmetli_personel_eposta'])
-    writer.writerow(['MacBook Pro 16', 'SN-MAC-2026-001', 'Elektronik', 'Oda 101', '45000.00', '2028-12-31', 'ornek.personel@dika.gov.tr'])
-    writer.writerow(['Ofis Koltuğu', 'SN-KLT-2026-002', 'Mobilya', 'Toplantı Salonu', '3500.00', '', ''])
+    writer.writerow(['esya_adi', 'seri_no', 'kategori', 'konum', 'fiyat', 'garanti_bitis', 'zimmetli_personel_eposta', 'adet'])
+    writer.writerow(['MacBook Pro 16', 'SN-MAC-2026-001', 'Elektronik', 'Oda 101', '45000.00', '2028-12-31', 'ornek.personel@dika.gov.tr', '1'])
+    writer.writerow(['Ofis Koltuğu', 'SN-KLT-2026-002', 'Mobilya', 'Toplantı Salonu', '3500.00', '', '', '5'])
 
     response = Response(output.getvalue(), mimetype="text/csv")
     response.headers["Content-Disposition"] = "attachment; filename=DIKA_Envanter_Yukleme_Sablonu.csv"
@@ -121,6 +121,14 @@ def import_csv():
                     fiyat = 0.0
                 garanti_bitis = row[5].strip() if len(row) > 5 and row[5].strip() else None
                 zimmetli_eposta = row[6].strip() if len(row) > 6 and row[6].strip() else None
+                # Miktar sutunu belirtilmemisse (eski sablon dosyalari dahil,
+                # sutun hic yoksa) veya gecersizse varsayilan olarak 1 yazilir.
+                try:
+                    adet = int(row[7].strip()) if len(row) > 7 and row[7].strip() else 1
+                    if adet < 1:
+                        adet = 1
+                except ValueError:
+                    adet = 1
 
                 # Satırda personel e-postası verilmişse eşya dogrudan o kişiye
                 # zimmetli olarak eklenir; verilmemişse (satır bos) 'Bosta' kalir.
@@ -146,9 +154,9 @@ def import_csv():
 
                 try:
                     cursor.execute("""
-                        INSERT INTO esyalar (esya_adi, seri_no, kategori, konum, fiyat, garanti_bitis, durum)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    """, (esya_adi, seri_no, kategori, konum, fiyat, garanti_bitis, durum))
+                        INSERT INTO esyalar (esya_adi, seri_no, adet, kategori, konum, fiyat, garanti_bitis, durum)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (esya_adi, seri_no, adet, kategori, konum, fiyat, garanti_bitis, durum))
                     esya_id = cursor.lastrowid
                     eklenen_sayi += 1
 

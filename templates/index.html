@@ -60,6 +60,7 @@
                   <p class="small text-muted mb-3">
                       Elinizdeki envanter listesini tek tıkla veritabanına aktarabilirsiniz. Dosya formatının doğru olması için önceden örnek şablonu inceleyebilirsiniz.
                       <br><b>zimmetli_personel_eposta</b> sütununa bir personelin e-postası yazılırsa eşya doğrudan o kişiye zimmetli olarak eklenir; sütun boş bırakılırsa eşya <b>boşta</b> olarak yüklenir.
+                      <br><b>adet</b> sütunu boş bırakılırsa eşya otomatik olarak <b>1 adet</b> yüklenir.
                   </p>
                   <div class="mb-3">
                       <a href="/download-template" class="btn btn-sm btn-outline-primary w-100 fw-bold">📑 Örnek Yükleme Şablonunu İndir (.csv)</a>
@@ -177,7 +178,7 @@
                                 <option value="">Seçiniz...</option>
                                 {% for e in bosta_esyalar %}
                                     {% if e.durum == 'Bosta' %}
-                                    <option value="{{ e.id }}">{{ e.esya_adi }} ({{ e.seri_no }}) - {{ "{:,.2f}".format(e.fiyat) }} TL</option>
+                                    <option value="{{ e.id }}">{{ e.esya_adi }} ({{ e.seri_no }}) - {{ e.adet }} adet - {{ "{:,.2f}".format(e.fiyat) }} TL</option>
                                     {% endif %}
                                 {% endfor %}
                             </select>
@@ -280,6 +281,10 @@
                             <input type="number" step="0.01" name="fiyat" class="form-control" placeholder="0.00" required>
                         </div>
                         <div class="mb-2">
+                            <label class="form-label text-muted small mb-1 fw-bold">ADET</label>
+                            <input type="number" min="1" step="1" name="adet" class="form-control" value="1" required>
+                        </div>
+                        <div class="mb-2">
                             <label class="form-label text-muted small mb-1 fw-bold">GARANTİ BİTİŞ TARİHİ</label>
                             <input type="date" name="garanti_bitis" class="form-control">
                         </div>
@@ -328,6 +333,7 @@
                             <tr>
                                 <th>Eşya Adı</th>
                                 <th>Kategori / Konum</th>
+                                <th>Adet</th>
                                 <th>Fiyat</th>
                                 <th>Durum</th>
                                 <th>İşlemler</th>
@@ -338,6 +344,7 @@
                             <tr>
                                 <td class="fw-bold">{{ e.esya_adi }} <br><small class="text-muted">{{ e.seri_no }}</small></td>
                                 <td><span class="badge bg-secondary">{{ e.kategori }}</span> <br><small class="text-muted">{{ e.konum }}</small></td>
+                                <td><span class="badge bg-info text-dark">{{ e.adet }}</span></td>
                                 <td><span class="badge bg-light text-dark border">{{ "{:,.2f}".format(e.fiyat) }} TL</span></td>
                                 <td>
                                     {% if e.durum == 'Bakimda' %}
@@ -400,6 +407,10 @@
                                                       <input type="number" step="0.01" name="fiyat" class="form-control" value="{{ e.fiyat }}" required>
                                                   </div>
                                                   <div class="mb-2">
+                                                      <label class="form-label small fw-bold">Adet</label>
+                                                      <input type="number" min="1" step="1" name="adet" class="form-control" value="{{ e.adet }}" required>
+                                                  </div>
+                                                  <div class="mb-2">
                                                       <label class="form-label small fw-bold">Garanti Bitiş Tarihi</label>
                                                       <input type="date" name="garanti_bitis" class="form-control" value="{{ e.garanti_bitis }}">
                                                   </div>
@@ -417,7 +428,7 @@
                             </tr>
                             {% else %}
                             <tr>
-                                <td colspan="5" class="text-center text-muted py-3">Envanterde kayıtlı eşya bulunmuyor.</td>
+                                <td colspan="6" class="text-center text-muted py-3">Envanterde kayıtlı eşya bulunmuyor.</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -601,7 +612,7 @@
                             {% for z in aktif_zimmetler %}
                             <tr>
                                 <td class="fw-bold">
-                                    {{ z.esya_adi }} <br><small class="text-muted">{{ z.seri_no }}</small>
+                                    {{ z.esya_adi }} <span class="badge bg-info text-dark">{{ z.adet }} adet</span> <br><small class="text-muted">{{ z.seri_no }}</small>
                                     {% if z.tahmini_iade_tarihi %}
                                         <br><small class="text-danger fw-bold">⏰ Teslim: {{ z.tahmini_iade_tarihi }}</small>
                                     {% endif %}
@@ -692,7 +703,7 @@
                         <tbody>
                             {% for gz in gecmis_zimmetler %}
                             <tr class="table-light text-muted">
-                                <td><del>{{ gz.esya_adi }}</del> <br><small>{{ gz.seri_no }}</small></td>
+                                <td><del>{{ gz.esya_adi }}</del> <span class="badge bg-light text-muted border">{{ gz.adet }} adet</span> <br><small>{{ gz.seri_no }}</small></td>
                                 <td><small>{{ "{:,.2f}".format(gz.fiyat) }} TL</small></td>
                                 <td>
                                     {% if gz.fatura_pdf %}

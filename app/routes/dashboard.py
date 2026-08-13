@@ -103,12 +103,12 @@ def dashboard():
     
     # Envanter tüm eşyaları göstermelidir. Zimmetli eşyaları burada
     # filtrelemek, eşya silinmemiş olsa bile kullanıcıya kaybolmuş gibi gösteriyordu.
-    cursor.execute("SELECT id, esya_adi, seri_no, fiyat, fatura_pdf, garanti_bitis, kategori, konum, durum FROM esyalar ORDER BY esya_adi, seri_no")
+    cursor.execute("SELECT id, esya_adi, seri_no, adet, fiyat, fatura_pdf, garanti_bitis, kategori, konum, durum FROM esyalar ORDER BY esya_adi, seri_no")
     envanter_esyalari = cursor.fetchall()
     bosta_esyalar = [esya for esya in envanter_esyalari if esya['durum'] == 'Bosta']
     
     cursor.execute("""
-        SELECT z.id, z.esya_id, e.esya_adi, e.seri_no, e.fiyat, e.fatura_pdf, e.garanti_bitis, e.kategori,
+        SELECT z.id, z.esya_id, e.esya_adi, e.seri_no, e.adet, e.fiyat, e.fatura_pdf, e.garanti_bitis, e.kategori,
                c_alan.id AS alan_id, c_alan.ad_soyad AS alan_personel, r_alan.level AS alan_level,
                c_veren.ad_soyad AS veren_amir,
                z.zimmet_tarihi, z.tahmini_iade_tarihi
@@ -123,7 +123,7 @@ def dashboard():
     aktif_zimmetler = cursor.fetchall()
 
     cursor.execute("""
-        SELECT z.id, e.esya_adi, e.seri_no, e.fiyat, e.fatura_pdf,
+        SELECT z.id, e.esya_adi, e.seri_no, e.adet, e.fiyat, e.fatura_pdf,
                c_alan.ad_soyad AS alan_personel,
                c_veren.ad_soyad AS veren_amir,
                z.zimmet_tarihi, z.iade_tarihi

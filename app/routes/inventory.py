@@ -16,10 +16,11 @@ def esya_ekle():
     esya_adi = request.form['esya_adi']
     seri_no = request.form['seri_no']
     fiyat = request.form.get('fiyat', 0.0)
+    adet = request.form.get('adet', 1, type=int) or 1
     kategori = request.form.get('kategori', 'Genel')
     konum = request.form.get('birim') or request.form.get('konum', 'Merkez Depo')
     garanti_bitis = request.form.get('garanti_bitis') if request.form.get('garanti_bitis') else None
-    
+
     fatura_filename = None
     if 'fatura_pdf' in request.files:
         file = request.files['fatura_pdf']
@@ -32,9 +33,9 @@ def esya_ekle():
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            INSERT INTO esyalar (esya_adi, seri_no, fiyat, kategori, konum, fatura_pdf, garanti_bitis, durum)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 'Bosta')
-        """, (esya_adi, seri_no, fiyat, kategori, konum, fatura_filename, garanti_bitis))
+            INSERT INTO esyalar (esya_adi, seri_no, adet, fiyat, kategori, konum, fatura_pdf, garanti_bitis, durum)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'Bosta')
+        """, (esya_adi, seri_no, adet, fiyat, kategori, konum, fatura_filename, garanti_bitis))
         conn.commit()
 
         log_ekle(session['user_id'], "Eşya Eklendi", f"Envantere yeni eşya eklendi: {esya_adi} ({kategori} - {konum})")
@@ -56,6 +57,7 @@ def esya_guncelle(id):
     esya_adi = request.form['esya_adi']
     seri_no = request.form['seri_no']
     fiyat = request.form.get('fiyat', 0.0)
+    adet = request.form.get('adet', 1, type=int) or 1
     kategori = request.form.get('kategori', 'Genel')
     konum = request.form.get('konum', 'Merkez Depo')
     durum = request.form.get('durum', 'Bosta')
@@ -77,10 +79,10 @@ def esya_guncelle(id):
             return redirect(url_for('dashboard.dashboard'))
 
         cursor.execute("""
-            UPDATE esyalar 
-            SET esya_adi = %s, seri_no = %s, fiyat = %s, kategori = %s, konum = %s, durum = %s, garanti_bitis = %s
+            UPDATE esyalar
+            SET esya_adi = %s, seri_no = %s, adet = %s, fiyat = %s, kategori = %s, konum = %s, durum = %s, garanti_bitis = %s
             WHERE id = %s
-        """, (esya_adi, seri_no, fiyat, kategori, konum, durum, garanti_bitis, id))
+        """, (esya_adi, seri_no, adet, fiyat, kategori, konum, durum, garanti_bitis, id))
         conn.commit()
 
         log_ekle(session['user_id'], "Eşya Güncellendi", f"Eşya güncellendi: {esya_adi} (Kategori: {kategori}, Konum: {konum})")
