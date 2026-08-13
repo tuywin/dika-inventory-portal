@@ -2,6 +2,7 @@
 from flask import Blueprint, redirect, render_template, session, url_for
 
 from ..db import get_db
+from ..tasks import garanti_bildirimlerini_gonder, garanti_kontrolu_bugun_yapildi_mi
 from ..utils import ZIMMET_ONAY_YETKILI_RUTBELER, ZIMMET_YETKILI_RUTBELER, login_required
 
 bp = Blueprint('dashboard', __name__)
@@ -22,6 +23,11 @@ def bildirimler_okundu_isaretle():
 @bp.route('/')
 @login_required
 def dashboard():
+    # Gunun ilk dashboard yuklemesinde garanti suresi yaklasan esyalar
+    # taranir; ayni gun icinde tekrar calismaz.
+    if not garanti_kontrolu_bugun_yapildi_mi():
+        garanti_bildirimlerini_gonder()
+
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
 

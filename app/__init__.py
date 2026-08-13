@@ -41,4 +41,14 @@ def create_app():
     app.register_blueprint(zimmet_bp)
     app.register_blueprint(reports_bp)
 
+    @app.cli.command('garanti-kontrol')
+    def garanti_kontrol_command():
+        """Garanti bitisine 3 ay kalan esyalar icin bildirim gonderir.
+        Ileride bir cron/systemd timer ile gunluk calistirilabilir:
+            flask --app main garanti-kontrol
+        """
+        from .tasks import garanti_bildirimlerini_gonder
+        garanti_bildirimlerini_gonder()
+        print("Garanti kontrolu tamamlandi.")
+
     return app

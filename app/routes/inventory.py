@@ -66,7 +66,7 @@ def esya_guncelle(id):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT durum FROM esyalar WHERE id = %s", (id,))
+        cursor.execute("SELECT durum, garanti_bitis FROM esyalar WHERE id = %s", (id,))
         mevcut_esya = cursor.fetchone()
         if not mevcut_esya:
             flash("Hata: Güncellenecek eşya bulunamadı.", "danger")
@@ -79,11 +79,17 @@ def esya_guncelle(id):
             flash("Zimmetli veya onay bekleyen bir eşyanın durumu buradan değiştirilemez.", "warning")
             return redirect(url_for('dashboard.dashboard'))
 
+        # Garanti bitis tarihi degistiyse (ornegin yeni bir tarihe uzatildiysa)
+        # bildirim bayragi sifirlanir; aksi halde yaklasma bildirimi bir daha hic gitmez.
+        eski_garanti = str(mevcut_esya['garanti_bitis']) if mevcut_esya['garanti_bitis'] else None
+        garanti_degisti = eski_garanti != garanti_bitis
+
         cursor.execute("""
             UPDATE esyalar
-            SET esya_adi = %s, seri_no = %s, adet = %s, fiyat = %s, kategori = %s, konum = %s, durum = %s, garanti_bitis = %s
+            SET esya_adi = %s, seri_no = %s, adet = %s, fiyat = %s, kategori = %s, konum = %s, durum = %s, garanti_bitis = %s,
+                garanti_bildirimi_gonderildi = CASE WHEN %s THEN 0 ELSE garanti_bildirimi_gonderildi END
             WHERE id = %s
-        """, (esya_adi, seri_no, adet, fiyat, kategori, konum, durum, garanti_bitis, id))
+        """, (esya_adi, seri_no, adet, fiyat, kategori, konum, durum, garanti_bitis, garanti_degisti, id))
         conn.commit()
 
         log_ekle(session['user_id'], "Eşya Güncellendi", f"Eşya güncellendi: {esya_adi} (Kategori: {kategori}, Konum: {konum})")
