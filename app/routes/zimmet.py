@@ -11,7 +11,15 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
 from ..db import get_db
-from ..utils import log_ekle, login_required
+from ..utils import (
+    ZIMMET_ONAY_GEREKTIREN_RUTBELER,
+    ZIMMET_ONAY_YETKILI_RUTBELER,
+    ZIMMET_YETKILI_RUTBELER,
+    bildirim_gonder,
+    bildirim_gonder_rutbeye,
+    log_ekle,
+    login_required,
+)
 from ..pdf_utils import FONT_NAME, BOLD_FONT_NAME
 
 bp = Blueprint('zimmet', __name__)
@@ -33,20 +41,22 @@ def zimmet_ver():
     cursor = conn.cursor(dictionary=True)
 
     cursor.execute("""
-        SELECT c.id, r.level FROM calisanlar c 
-        JOIN rutbeler r ON c.rutbe_id = r.id WHERE c.id IN (%s, %s)
-    """, (zimmetleyen_id, teslim_alan_id))
-    
-    user_levels = {str(row['id']): row['level'] for row in cursor.fetchall()}
+        SELECT r.rutbe_adi FROM calisanlar c
+        JOIN rutbeler r ON c.rutbe_id = r.id WHERE c.id = %s
+    """, (zimmetleyen_id,))
+    zimmetleyen_satiri = cursor.fetchone()
+    zimmetleyen_rutbe = zimmetleyen_satiri['rutbe_adi'] if zimmetleyen_satiri else None
 
-    if user_levels.get(str(zimmetleyen_id), 0) <= user_levels.get(str(teslim_alan_id), 0):
-        flash("Yetki Hatası: Yalnızca sizden daha alt rütbedeki kişilere eşya zimmetleyebilirsiniz!", "danger")
+    if zimmetleyen_rutbe not in ZIMMET_YETKILI_RUTBELER:
+        flash("Yetki Hatası: Eşya zimmetleme yetkisi yalnızca Genel Sekreter, Birim Başkanı ve Taşınır Kayıt Yetkilisi rütbelerine tanımlıdır.", "danger")
         cursor.close()
         conn.close()
         return redirect(url_for('dashboard.dashboard'))
 
+    onay_gerekli = zimmetleyen_rutbe in ZIMMET_ONAY_GEREKTIREN_RUTBELER
+
     # Aynı eşyanın iki kez zimmetlenmesini önlemek için kaydı kilitleyip
-    # sadece boşta ise tek işlem içinde zimmetli duruma geçiriyoruz.
+    # sadece boşta ise tek işlem içinde zimmetli/onay bekliyor duruma geçiriyoruz.
     cursor.execute("SELECT durum FROM esyalar WHERE id = %s FOR UPDATE", (esya_id,))
     esya_durumu = cursor.fetchone()
     if not esya_durumu:
@@ -60,7 +70,8 @@ def zimmet_ver():
         conn.close()
         return redirect(url_for('dashboard.dashboard'))
 
-    cursor.execute("UPDATE esyalar SET durum = 'Zimmetli' WHERE id = %s AND durum = 'Bosta'", (esya_id,))
+    yeni_esya_durumu = 'Onay Bekliyor' if onay_gerekli else 'Zimmetli'
+    cursor.execute("UPDATE esyalar SET durum = %s WHERE id = %s AND durum = 'Bosta'", (yeni_esya_durumu, esya_id))
     if cursor.rowcount != 1:
         conn.rollback()
         flash("Eşyanın durumu değiştiği için zimmetleme yapılamadı. Sayfayı yenileyin.", "warning")
@@ -68,11 +79,17 @@ def zimmet_ver():
         conn.close()
         return redirect(url_for('dashboard.dashboard'))
 
-    cursor.execute("""
-        INSERT INTO zimmetler (esya_id, teslim_alan_id, zimmetleyen_id, tahmini_iade_tarihi) 
-        VALUES (%s, %s, %s, %s)
-    """, (esya_id, teslim_alan_id, zimmetleyen_id, tahmini_iade))
-    
+    if onay_gerekli:
+        cursor.execute("""
+            INSERT INTO zimmetler (esya_id, teslim_alan_id, zimmetleyen_id, tahmini_iade_tarihi, onay_durumu)
+            VALUES (%s, %s, %s, %s, 'Bekliyor')
+        """, (esya_id, teslim_alan_id, zimmetleyen_id, tahmini_iade))
+    else:
+        cursor.execute("""
+            INSERT INTO zimmetler (esya_id, teslim_alan_id, zimmetleyen_id, tahmini_iade_tarihi, onay_durumu, onaylayan_id, onay_tarihi)
+            VALUES (%s, %s, %s, %s, 'Onaylandi', %s, NOW())
+        """, (esya_id, teslim_alan_id, zimmetleyen_id, tahmini_iade, zimmetleyen_id))
+
     cursor.execute("SELECT ad_soyad FROM calisanlar WHERE id = %s", (teslim_alan_id,))
     alan_adi = cursor.fetchone()['ad_soyad']
     cursor.execute("SELECT esya_adi, seri_no FROM esyalar WHERE id = %s", (esya_id,))
@@ -82,9 +99,23 @@ def zimmet_ver():
     cursor.close()
     conn.close()
 
-    log_ekle(session['user_id'], "Zimmet Atandı", f"Eşya ({esya_info['esya_adi']} - {esya_info['seri_no']}), {alan_adi} kişisine zimmetlendi.")
+    if onay_gerekli:
+        log_ekle(session['user_id'], "Zimmet Onayı Talep Edildi", f"Eşya ({esya_info['esya_adi']} - {esya_info['seri_no']}) için {alan_adi} kişisine zimmetleme talebi oluşturuldu, Birim Başkanı onayı bekleniyor.")
+        bildirim_gonder_rutbeye(
+            'Birim Başkanı',
+            'Zimmetleme Onayı Bekleniyor',
+            f"{session.get('user_name', 'Bir kullanıcı')}, {esya_info['esya_adi']} ({esya_info['seri_no']}) eşyasını {alan_adi} kişisine zimmetlemek istiyor. Onayınız bekleniyor."
+        )
+        flash("Zimmetleme talebiniz oluşturuldu; Birim Başkanı onayının ardından geçerli olacak.", "info")
+    else:
+        log_ekle(session['user_id'], "Zimmet Atandı", f"Eşya ({esya_info['esya_adi']} - {esya_info['seri_no']}), {alan_adi} kişisine zimmetlendi.")
+        bildirim_gonder(
+            teslim_alan_id,
+            'Üzerinize Eşya Zimmetlendi',
+            f"{esya_info['esya_adi']} ({esya_info['seri_no']}) eşyası üzerinize zimmetlendi."
+        )
+        flash("Eşya başarıyla zimmetlendi.", "success")
 
-    flash("Eşya başarıyla alt rütbeli çalışana zimmetlendi.", "success")
     return redirect(url_for('dashboard.dashboard'))
 
 
@@ -101,7 +132,7 @@ def zimmet_iade(zimmet_id, esya_id):
             FROM zimmetler z
             JOIN calisanlar c ON c.id = z.teslim_alan_id
             JOIN rutbeler r ON r.id = c.rutbe_id
-            WHERE z.id = %s AND z.iade_tarihi IS NULL
+            WHERE z.id = %s AND z.iade_tarihi IS NULL AND z.onay_durumu = 'Onaylandi'
             FOR UPDATE
         """, (zimmet_id,))
         zimmet = cursor.fetchone()
@@ -139,6 +170,119 @@ def zimmet_iade(zimmet_id, esya_id):
 
 
 
+@bp.route('/zimmet-onayla/<int:zimmet_id>', methods=['POST'])
+@login_required
+def zimmet_onayla(zimmet_id):
+    onaylayan_id = session['user_id']
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT r.rutbe_adi FROM calisanlar c
+            JOIN rutbeler r ON c.rutbe_id = r.id WHERE c.id = %s
+        """, (onaylayan_id,))
+        onaylayan_satiri = cursor.fetchone()
+        if not onaylayan_satiri or onaylayan_satiri['rutbe_adi'] not in ZIMMET_ONAY_YETKILI_RUTBELER:
+            flash("Yetki Hatası: Zimmetleme taleplerini yalnızca Genel Sekreter ve Birim Başkanı onaylayabilir.", "danger")
+            return redirect(url_for('dashboard.dashboard'))
+
+        cursor.execute("""
+            SELECT z.esya_id, z.teslim_alan_id, z.zimmetleyen_id, e.esya_adi, e.seri_no,
+                   c_alan.ad_soyad AS alan_adi
+            FROM zimmetler z
+            JOIN esyalar e ON z.esya_id = e.id
+            JOIN calisanlar c_alan ON z.teslim_alan_id = c_alan.id
+            WHERE z.id = %s AND z.onay_durumu = 'Bekliyor'
+            FOR UPDATE
+        """, (zimmet_id,))
+        zimmet = cursor.fetchone()
+        if not zimmet:
+            flash("Hata: Onay bekleyen bir zimmet talebi bulunamadı.", "danger")
+            return redirect(url_for('dashboard.dashboard'))
+
+        cursor.execute("""
+            UPDATE zimmetler SET onay_durumu = 'Onaylandi', onaylayan_id = %s, onay_tarihi = NOW()
+            WHERE id = %s
+        """, (onaylayan_id, zimmet_id))
+        cursor.execute("UPDATE esyalar SET durum = 'Zimmetli' WHERE id = %s", (zimmet['esya_id'],))
+        conn.commit()
+
+        log_ekle(onaylayan_id, "Zimmet Onaylandı", f"Eşya ({zimmet['esya_adi']} - {zimmet['seri_no']}), {zimmet['alan_adi']} kişisine zimmetlenmesi onaylandı.")
+        bildirim_gonder(
+            zimmet['teslim_alan_id'],
+            'Üzerinize Eşya Zimmetlendi',
+            f"{zimmet['esya_adi']} ({zimmet['seri_no']}) eşyası üzerinize zimmetlendi."
+        )
+        bildirim_gonder(
+            zimmet['zimmetleyen_id'],
+            'Zimmetleme Talebiniz Onaylandı',
+            f"{zimmet['esya_adi']} ({zimmet['seri_no']}) eşyasını {zimmet['alan_adi']} kişisine zimmetleme talebiniz onaylandı."
+        )
+        flash("Zimmetleme talebi onaylandı.", "success")
+    except mysql.connector.Error as err:
+        conn.rollback()
+        flash(f"Onay işlemi yapılamadı: {err}", "danger")
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('dashboard.dashboard'))
+
+
+
+@bp.route('/zimmet-reddet/<int:zimmet_id>', methods=['POST'])
+@login_required
+def zimmet_reddet(zimmet_id):
+    reddeden_id = session['user_id']
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT r.rutbe_adi FROM calisanlar c
+            JOIN rutbeler r ON c.rutbe_id = r.id WHERE c.id = %s
+        """, (reddeden_id,))
+        reddeden_satiri = cursor.fetchone()
+        if not reddeden_satiri or reddeden_satiri['rutbe_adi'] not in ZIMMET_ONAY_YETKILI_RUTBELER:
+            flash("Yetki Hatası: Zimmetleme taleplerini yalnızca Genel Sekreter ve Birim Başkanı reddedebilir.", "danger")
+            return redirect(url_for('dashboard.dashboard'))
+
+        cursor.execute("""
+            SELECT z.esya_id, z.zimmetleyen_id, e.esya_adi, e.seri_no, c_alan.ad_soyad AS alan_adi
+            FROM zimmetler z
+            JOIN esyalar e ON z.esya_id = e.id
+            JOIN calisanlar c_alan ON z.teslim_alan_id = c_alan.id
+            WHERE z.id = %s AND z.onay_durumu = 'Bekliyor'
+            FOR UPDATE
+        """, (zimmet_id,))
+        zimmet = cursor.fetchone()
+        if not zimmet:
+            flash("Hata: Onay bekleyen bir zimmet talebi bulunamadı.", "danger")
+            return redirect(url_for('dashboard.dashboard'))
+
+        cursor.execute("""
+            UPDATE zimmetler SET onay_durumu = 'Reddedildi', onaylayan_id = %s, onay_tarihi = NOW(), iade_tarihi = NOW()
+            WHERE id = %s
+        """, (reddeden_id, zimmet_id))
+        cursor.execute("UPDATE esyalar SET durum = 'Bosta' WHERE id = %s", (zimmet['esya_id'],))
+        conn.commit()
+
+        log_ekle(reddeden_id, "Zimmet Reddedildi", f"Eşya ({zimmet['esya_adi']} - {zimmet['seri_no']}), {zimmet['alan_adi']} kişisine zimmetlenme talebi reddedildi.")
+        bildirim_gonder(
+            zimmet['zimmetleyen_id'],
+            'Zimmetleme Talebiniz Reddedildi',
+            f"{zimmet['esya_adi']} ({zimmet['seri_no']}) eşyasını {zimmet['alan_adi']} kişisine zimmetleme talebiniz reddedildi."
+        )
+        flash("Zimmetleme talebi reddedildi, eşya boşta olarak işaretlendi.", "info")
+    except mysql.connector.Error as err:
+        conn.rollback()
+        flash(f"Red işlemi yapılamadı: {err}", "danger")
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('dashboard.dashboard'))
+
+
 
 @bp.route('/zimmet-pdf/<int:zimmet_id>')
 @login_required
@@ -156,14 +300,14 @@ def zimmet_pdf(zimmet_id):
         JOIN rutbeler r_alan ON c_alan.rutbe_id = r_alan.id
         JOIN calisanlar c_veren ON z.zimmetleyen_id = c_veren.id
         JOIN rutbeler r_veren ON c_veren.rutbe_id = r_veren.id
-        WHERE z.id = %s
+        WHERE z.id = %s AND z.onay_durumu = 'Onaylandi'
     """, (zimmet_id,))
     z = cursor.fetchone()
     cursor.close()
     conn.close()
 
     if not z:
-        flash("Zimmet kaydı bulunamadı!", "danger")
+        flash("Zimmet kaydı bulunamadı veya henüz onaylanmamış!", "danger")
         return redirect(url_for('dashboard.dashboard'))
 
     buffer = io.BytesIO()

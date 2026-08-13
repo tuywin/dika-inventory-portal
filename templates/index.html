@@ -37,6 +37,12 @@
                     <span class="badge bg-success">{{ session['user_rutbe'] }}</span>
                 </div>
 
+                <button class="btn btn-sm btn-outline-light fw-bold position-relative" data-bs-toggle="modal" data-bs-target="#bildirimModal">
+                    🔔 Bildirimler
+                    {% if okunmamis_bildirim_sayisi %}
+                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">{{ okunmamis_bildirim_sayisi }}</span>
+                    {% endif %}
+                </button>
                 <button class="btn btn-sm btn-success fw-bold" data-bs-toggle="modal" data-bs-target="#importCsvModal">📤 Excel İçe Aktar</button>
                 <button class="btn btn-sm btn-outline-light fw-bold" data-bs-toggle="modal" data-bs-target="#reportCsvModal">📊 Rapor İndir</button>
                 <a href="/logout" class="btn btn-sm btn-danger fw-bold">Çıkış</a>
@@ -46,6 +52,35 @@
     </div>
 
 <div class="container py-2">
+
+    <!-- BİLDİRİMLER MODALI -->
+    <div class="modal fade" id="bildirimModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header bg-dark text-white">
+            <h5 class="modal-title fw-bold">🔔 Bildirimler</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body text-start" style="max-height: 60vh; overflow-y: auto;">
+              {% for b in bildirimler %}
+              <div class="mb-2 p-2 rounded {% if not b.okundu %}bg-light border-start border-4 border-primary{% else %}text-muted{% endif %}">
+                  <div class="fw-bold small">{{ b.baslik }}</div>
+                  <div class="small">{{ b.mesaj }}</div>
+                  <div class="small text-muted">{{ b.tarih }}</div>
+              </div>
+              {% else %}
+              <p class="text-muted text-center py-3 mb-0">Henüz bildiriminiz yok.</p>
+              {% endfor %}
+          </div>
+          <div class="modal-footer">
+            <form action="/bildirimler-okundu-isaretle" method="POST" class="d-inline">
+                <button type="submit" class="btn btn-sm btn-secondary">Tümünü Okundu İşaretle</button>
+            </form>
+            <button type="button" class="btn btn-sm btn-primary" data-bs-dismiss="modal">Kapat</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- TOPLU ENVANTER YÜKLEME MODALI -->
     <div class="modal fade" id="importCsvModal" tabindex="-1">
@@ -59,7 +94,7 @@
               <div class="modal-body text-start">
                   <p class="small text-muted mb-3">
                       Elinizdeki envanter listesini tek tıkla veritabanına aktarabilirsiniz. Dosya formatının doğru olması için önceden örnek şablonu inceleyebilirsiniz.
-                      <br><b>zimmetli_personel_eposta</b> sütununa bir personelin e-postası yazılırsa eşya doğrudan o kişiye zimmetli olarak eklenir; sütun boş bırakılırsa eşya <b>boşta</b> olarak yüklenir.
+                      <br><b>zimmetli_personel_eposta</b> sütununa bir personelin e-postası yazılırsa eşya o kişiye zimmetlenir (yalnızca Genel Sekreter/Birim Başkanı/Taşınır Kayıt Yetkilisi kullanabilir; Taşınır Kayıt Yetkilisi yüklerse Birim Başkanı onayına düşer); sütun boş bırakılırsa eşya <b>boşta</b> olarak yüklenir.
                       <br><b>adet</b> sütunu boş bırakılırsa eşya otomatik olarak <b>1 adet</b> yüklenir.
                   </p>
                   <div class="mb-3">
@@ -168,9 +203,13 @@
         <div class="col-md-4">
             
             <!-- 1. Zimmet Atama Formu -->
+            {% if can_zimmetle %}
             <div class="card shadow-sm border-0 mb-4">
                 <div class="card-header bg-dark text-white fw-bold">📌 Yeni Zimmet Ataması</div>
                 <div class="card-body">
+                    {% if session.get('user_rutbe') == 'Taşınır Kayıt Yetkilisi' %}
+                    <p class="small text-muted">Oluşturduğunuz zimmetleme talepleri Birim Başkanı onayından sonra geçerli olur.</p>
+                    {% endif %}
                     <form action="/zimmet-ver" method="POST">
                         <div class="mb-3">
                             <label class="form-label text-muted small fw-bold">ZİMMETLENECEK EŞYA</label>
@@ -184,7 +223,7 @@
                             </select>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label text-muted small fw-bold">TESLİM ALACAK PERSONEL (ALT RÜTBE)</label>
+                            <label class="form-label text-muted small fw-bold">TESLİM ALACAK PERSONEL</label>
                             <select name="teslim_alan_id" class="form-select" required>
                                 <option value="">Seçiniz...</option>
                                 {% for c in tum_calisanlar %}
@@ -202,6 +241,7 @@
                     </form>
                 </div>
             </div>
+            {% endif %}
 
             <!-- 2. Yeni Çalışan Ekleme Formu -->
             {% if can_add_employee %}
@@ -351,6 +391,8 @@
                                         <span class="badge bg-danger">🚨 Bakımda / Tamirde</span>
                                     {% elif e.durum == 'Zimmetli' %}
                                         <span class="badge bg-warning text-dark">📋 Zimmetli</span>
+                                    {% elif e.durum == 'Onay Bekliyor' %}
+                                        <span class="badge bg-info text-dark">⏳ Onay Bekliyor</span>
                                     {% elif e.durum == 'Hurda' %}
                                         <span class="badge bg-secondary">❌ Hurda / Kullanılamaz</span>
                                     {% else %}
@@ -399,6 +441,9 @@
                                                           <option value="Hurda" {% if e.durum == 'Hurda' %}selected{% endif %}>❌ Hurda / Kullanılamaz</option>
                                                           {% if e.durum == 'Zimmetli' %}
                                                           <option value="Zimmetli" selected>📋 Zimmetli (İade alınana kadar değiştirilemez)</option>
+                                                          {% endif %}
+                                                          {% if e.durum == 'Onay Bekliyor' %}
+                                                          <option value="Onay Bekliyor" selected>⏳ Onay Bekliyor (Onay/Red alınana kadar değiştirilemez)</option>
                                                           {% endif %}
                                                       </select>
                                                   </div>
@@ -589,6 +634,49 @@
                     </table>
                 </div>
             </div>
+
+            <!-- 1.5. Onay Bekleyen Zimmetler -->
+            {% if can_onayla %}
+            <div class="card shadow-sm border-danger mb-4">
+                <div class="card-header bg-danger text-white fw-bold d-flex justify-content-between align-items-center">
+                    <span>⏳ Onay Bekleyen Zimmetler</span>
+                    <span class="badge bg-light text-dark">{{ onay_bekleyen_zimmetler|length }} Adet</span>
+                </div>
+                <div class="card-body p-0" style="max-height: 350px; overflow-y: auto;">
+                    <table class="table table-hover mb-0 align-middle searchable-table">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>Eşya</th>
+                                <th>Teslim Alacak</th>
+                                <th>Talep Eden</th>
+                                <th>İşlem</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for o in onay_bekleyen_zimmetler %}
+                            <tr>
+                                <td class="fw-bold">{{ o.esya_adi }} <span class="badge bg-info text-dark">{{ o.adet }} adet</span><br><small class="text-muted">{{ o.seri_no }}</small></td>
+                                <td>{{ o.alan_personel }}</td>
+                                <td>{{ o.talep_eden }} <br><small class="text-muted">{{ o.zimmet_tarihi }}</small></td>
+                                <td>
+                                    <form action="/zimmet-onayla/{{ o.id }}" method="POST" class="d-inline">
+                                        <button type="submit" class="btn btn-sm btn-success fw-bold">Onayla</button>
+                                    </form>
+                                    <form action="/zimmet-reddet/{{ o.id }}" method="POST" class="d-inline" onsubmit="return confirm('Bu zimmetleme talebini reddetmek istediğinize emin misiniz?');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger fw-bold">Reddet</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-3">Onay bekleyen zimmetleme talebi bulunmuyor.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
 
             <!-- 2. Aktif Zimmet Kayıtları -->
             <div class="card shadow-sm border-0 mb-4">

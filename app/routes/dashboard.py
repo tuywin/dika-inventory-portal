@@ -1,10 +1,22 @@
 """Ana panel (dashboard)."""
-from flask import Blueprint, render_template, session
+from flask import Blueprint, redirect, render_template, session, url_for
 
 from ..db import get_db
-from ..utils import login_required
+from ..utils import ZIMMET_ONAY_YETKILI_RUTBELER, ZIMMET_YETKILI_RUTBELER, login_required
 
 bp = Blueprint('dashboard', __name__)
+
+
+@bp.route('/bildirimler-okundu-isaretle', methods=['POST'])
+@login_required
+def bildirimler_okundu_isaretle():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE bildirimler SET okundu = 1 WHERE kullanici_id = %s AND okundu = 0", (session['user_id'],))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return redirect(url_for('dashboard.dashboard'))
 
 
 @bp.route('/')
@@ -35,6 +47,8 @@ def dashboard():
     is_top_manager = (int(user_level) == int(max_level)) or any(k in user_rutbe for k in ['kurucu', 'genel', 'yönetici'])
     can_add_employee = int(user_level) >= 50 or is_top_manager
     can_edit_personnel = session.get('user_rutbe') in {'Genel Sekreter', 'System Admin'}
+    can_zimmetle = session.get('user_rutbe') in ZIMMET_YETKILI_RUTBELER
+    can_onayla = session.get('user_rutbe') in ZIMMET_ONAY_YETKILI_RUTBELER
 
     cursor.execute("SELECT COALESCE(SUM(fiyat), 0) AS toplam_deger, COUNT(*) AS toplam_esya FROM esyalar")
     esya_stats = cursor.fetchone()
@@ -117,10 +131,36 @@ def dashboard():
         JOIN calisanlar c_alan ON z.teslim_alan_id = c_alan.id
         JOIN rutbeler r_alan ON c_alan.rutbe_id = r_alan.id
         JOIN calisanlar c_veren ON z.zimmetleyen_id = c_veren.id
-        WHERE z.iade_tarihi IS NULL
+        WHERE z.iade_tarihi IS NULL AND z.onay_durumu = 'Onaylandi'
         ORDER BY z.zimmet_tarihi DESC
     """)
     aktif_zimmetler = cursor.fetchall()
+
+    onay_bekleyen_zimmetler = []
+    if can_onayla:
+        cursor.execute("""
+            SELECT z.id, e.esya_adi, e.seri_no, e.adet,
+                   c_alan.ad_soyad AS alan_personel,
+                   c_talep.ad_soyad AS talep_eden,
+                   z.zimmet_tarihi, z.tahmini_iade_tarihi
+            FROM zimmetler z
+            JOIN esyalar e ON z.esya_id = e.id
+            JOIN calisanlar c_alan ON z.teslim_alan_id = c_alan.id
+            JOIN calisanlar c_talep ON z.zimmetleyen_id = c_talep.id
+            WHERE z.onay_durumu = 'Bekliyor'
+            ORDER BY z.zimmet_tarihi ASC
+        """)
+        onay_bekleyen_zimmetler = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT id, baslik, mesaj, okundu, tarih
+        FROM bildirimler
+        WHERE kullanici_id = %s
+        ORDER BY okundu ASC, tarih DESC
+        LIMIT 30
+    """, (session['user_id'],))
+    bildirimler = cursor.fetchall()
+    okunmamis_bildirim_sayisi = sum(1 for b in bildirimler if not b['okundu'])
 
     cursor.execute("""
         SELECT z.id, e.esya_adi, e.seri_no, e.adet, e.fiyat, e.fatura_pdf,
@@ -158,10 +198,15 @@ def dashboard():
                            eklenebilir_rutbeler=eklenebilir_rutbeler,
                            can_add_employee=can_add_employee,
                            can_edit_personnel=can_edit_personnel,
+                           can_zimmetle=can_zimmetle,
+                           can_onayla=can_onayla,
                            envanter_esyalari=envanter_esyalari,
-                           bosta_esyalar=bosta_esyalar, 
+                           bosta_esyalar=bosta_esyalar,
                            aktif_zimmetler=aktif_zimmetler,
                            gecmis_zimmetler=gecmis_zimmetler,
+                           onay_bekleyen_zimmetler=onay_bekleyen_zimmetler,
+                           bildirimler=bildirimler,
+                           okunmamis_bildirim_sayisi=okunmamis_bildirim_sayisi,
                            is_top_manager=is_top_manager,
                            loglar=loglar)
 

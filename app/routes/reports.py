@@ -5,7 +5,14 @@ import io
 from flask import Blueprint, Response, flash, redirect, request, session, url_for
 
 from ..db import get_db
-from ..utils import log_ekle, login_required
+from ..utils import (
+    ZIMMET_ONAY_GEREKTIREN_RUTBELER,
+    ZIMMET_YETKILI_RUTBELER,
+    bildirim_gonder,
+    bildirim_gonder_rutbeye,
+    log_ekle,
+    login_required,
+)
 
 bp = Blueprint('reports', __name__)
 
@@ -99,13 +106,16 @@ def import_csv():
 
         zimmetleyen_id = session['user_id']
         cursor.execute("""
-            SELECT r.level FROM calisanlar c JOIN rutbeler r ON c.rutbe_id = r.id WHERE c.id = %s
+            SELECT r.rutbe_adi FROM calisanlar c JOIN rutbeler r ON c.rutbe_id = r.id WHERE c.id = %s
         """, (zimmetleyen_id,))
         zimmetleyen_satiri = cursor.fetchone()
-        zimmetleyen_level = zimmetleyen_satiri['level'] if zimmetleyen_satiri else 0
+        zimmetleyen_rutbe = zimmetleyen_satiri['rutbe_adi'] if zimmetleyen_satiri else None
+        zimmetleyen_yetkili = zimmetleyen_rutbe in ZIMMET_YETKILI_RUTBELER
+        zimmetleyen_onay_gerekli = zimmetleyen_rutbe in ZIMMET_ONAY_GEREKTIREN_RUTBELER
 
         eklenen_sayi = 0
         zimmetlenen_sayi = 0
+        onay_bekleyen_sayi = 0
         atlanan_zimmetler = []
         atlanan_kayitlar = []
 
@@ -134,23 +144,24 @@ def import_csv():
                 # zimmetli olarak eklenir; verilmemişse (satır bos) 'Bosta' kalir.
                 hedef_calisan = None
                 if zimmetli_eposta:
-                    cursor.execute("""
-                        SELECT c.id, r.level FROM calisanlar c
-                        JOIN rutbeler r ON c.rutbe_id = r.id
-                        WHERE c.eposta = %s
-                    """, (zimmetli_eposta,))
-                    hedef_calisan = cursor.fetchone()
+                    if not zimmetleyen_yetkili:
+                        atlanan_zimmetler.append(f"{seri_no}: zimmetleme yetkiniz yok (sadece Genel Sekreter, Birim Başkanı, Taşınır Kayıt Yetkilisi)")
+                    else:
+                        cursor.execute("SELECT id FROM calisanlar WHERE eposta = %s", (zimmetli_eposta,))
+                        hedef_calisan = cursor.fetchone()
 
-                    if not hedef_calisan:
-                        atlanan_zimmetler.append(f"{seri_no}: '{zimmetli_eposta}' eşleşen personel bulunamadı")
-                    elif hedef_calisan['id'] == zimmetleyen_id:
-                        atlanan_zimmetler.append(f"{seri_no}: kendinize zimmetleyemezsiniz")
-                        hedef_calisan = None
-                    elif zimmetleyen_level <= hedef_calisan['level']:
-                        atlanan_zimmetler.append(f"{seri_no}: '{zimmetli_eposta}' sizden üst/eşit rütbeli, zimmetlenemedi")
-                        hedef_calisan = None
+                        if not hedef_calisan:
+                            atlanan_zimmetler.append(f"{seri_no}: '{zimmetli_eposta}' eşleşen personel bulunamadı")
+                        elif hedef_calisan['id'] == zimmetleyen_id:
+                            atlanan_zimmetler.append(f"{seri_no}: kendinize zimmetleyemezsiniz")
+                            hedef_calisan = None
 
-                durum = 'Zimmetli' if hedef_calisan else 'Bosta'
+                if hedef_calisan and zimmetleyen_onay_gerekli:
+                    durum = 'Onay Bekliyor'
+                elif hedef_calisan:
+                    durum = 'Zimmetli'
+                else:
+                    durum = 'Bosta'
 
                 try:
                     cursor.execute("""
@@ -160,11 +171,18 @@ def import_csv():
                     esya_id = cursor.lastrowid
                     eklenen_sayi += 1
 
-                    if hedef_calisan:
+                    if hedef_calisan and zimmetleyen_onay_gerekli:
                         cursor.execute("""
-                            INSERT INTO zimmetler (esya_id, teslim_alan_id, zimmetleyen_id)
-                            VALUES (%s, %s, %s)
+                            INSERT INTO zimmetler (esya_id, teslim_alan_id, zimmetleyen_id, onay_durumu)
+                            VALUES (%s, %s, %s, 'Bekliyor')
                         """, (esya_id, hedef_calisan['id'], zimmetleyen_id))
+                        onay_bekleyen_sayi += 1
+                    elif hedef_calisan:
+                        cursor.execute("""
+                            INSERT INTO zimmetler (esya_id, teslim_alan_id, zimmetleyen_id, onay_durumu, onaylayan_id, onay_tarihi)
+                            VALUES (%s, %s, %s, 'Onaylandi', %s, NOW())
+                        """, (esya_id, hedef_calisan['id'], zimmetleyen_id, zimmetleyen_id))
+                        bildirim_gonder(hedef_calisan['id'], 'Üzerinize Eşya Zimmetlendi', f"{esya_adi} ({seri_no}) eşyası üzerinize zimmetlendi.")
                         zimmetlenen_sayi += 1
                 except mysql.connector.Error as err:
                     # Ayni seri no veritabaninda veya dosyanin baska bir
@@ -180,15 +198,27 @@ def import_csv():
         cursor.close()
         conn.close()
 
-        detay = f"Excel/CSV dosyası ile {eklenen_sayi} adet eşya envantere aktarıldı ({zimmetlenen_sayi} adedi doğrudan personele zimmetlendi)."
+        detay = f"Excel/CSV dosyası ile {eklenen_sayi} adet eşya envantere aktarıldı ({zimmetlenen_sayi} adedi doğrudan personele zimmetlendi, {onay_bekleyen_sayi} adedi Birim Başkanı onayına gönderildi)."
         if atlanan_zimmetler:
             detay += " Zimmetlenemeyenler: " + "; ".join(atlanan_zimmetler)
         if atlanan_kayitlar:
             detay += " Eklenemeyen satırlar: " + "; ".join(atlanan_kayitlar)
         log_ekle(session['user_id'], "Toplu Envanter Yüklendi", detay)
 
+        if onay_bekleyen_sayi:
+            bildirim_gonder_rutbeye(
+                'Birim Başkanı',
+                'Toplu Zimmetleme Onayı Bekleniyor',
+                f"{session.get('user_name', 'Bir kullanıcı')} tarafından yüklenen Excel/CSV dosyasında {onay_bekleyen_sayi} adet zimmetleme talebi onayınızı bekliyor."
+            )
+
         mesaj = f"Tebrikler! Dosyadaki {eklenen_sayi} adet eşya envantere aktarıldı"
-        mesaj += f" ({zimmetlenen_sayi} adedi personele zimmetlendi)." if zimmetlenen_sayi else "."
+        ekler = []
+        if zimmetlenen_sayi:
+            ekler.append(f"{zimmetlenen_sayi} adedi personele zimmetlendi")
+        if onay_bekleyen_sayi:
+            ekler.append(f"{onay_bekleyen_sayi} adedi Birim Başkanı onayına gönderildi")
+        mesaj += f" ({', '.join(ekler)})." if ekler else "."
         flash(mesaj, "success")
         if atlanan_zimmetler:
             ozet = "; ".join(atlanan_zimmetler[:5])

@@ -72,10 +72,11 @@ def esya_guncelle(id):
             flash("Hata: Güncellenecek eşya bulunamadı.", "danger")
             return redirect(url_for('dashboard.dashboard'))
 
-        # Aktif zimmet, yalnızca iade işlemiyle kapatılabilir. Düzenleme
-        # formundan durum değiştirmek aktif zimmet kaydını yetimsiz bırakmamalı.
-        if mevcut_esya['durum'] == 'Zimmetli' and durum != 'Zimmetli':
-            flash("Aktif zimmetli eşyanın durumu değiştirilemez. Önce iade alın.", "warning")
+        # Aktif zimmet, yalnızca iade işlemiyle kapatılabilir. Onay bekleyen
+        # bir zimmet de onay/red akışı dışında değiştirilemez. Düzenleme
+        # formundan durum değiştirmek bu kayıtları yetimsiz bırakmamalı.
+        if mevcut_esya['durum'] in ('Zimmetli', 'Onay Bekliyor') and durum != mevcut_esya['durum']:
+            flash("Zimmetli veya onay bekleyen bir eşyanın durumu buradan değiştirilemez.", "warning")
             return redirect(url_for('dashboard.dashboard'))
 
         cursor.execute("""
@@ -106,8 +107,8 @@ def esya_sil(id):
     e = cursor.fetchone()
 
     if e:
-        if e['durum'] == 'Zimmetli':
-            flash("Hata: Aktif zimmetli olan bir eşyayı silemezsiniz! Önce iade alın.", "danger")
+        if e['durum'] in ('Zimmetli', 'Onay Bekliyor'):
+            flash("Hata: Zimmetli veya onay bekleyen bir eşyayı silemezsiniz!", "danger")
         else:
             cursor.execute("DELETE FROM esyalar WHERE id = %s", (id,))
             conn.commit()
