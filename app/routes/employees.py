@@ -4,7 +4,7 @@ from flask import Blueprint, flash, redirect, request, session, url_for
 from werkzeug.security import generate_password_hash
 
 from ..db import get_db
-from ..utils import log_ekle, login_required
+from ..utils import ZIMMET_ONAY_YETKILI_RUTBELER, bildirim_gonder, bildirim_gonder_rutbeye, log_ekle, login_required
 
 bp = Blueprint('employees', __name__)
 
@@ -50,18 +50,40 @@ def calisan_ekle():
         conn.close()
         return redirect(url_for('dashboard.dashboard'))
 
-    try:
-        # Varsayılan şifre "123456" hash'lenerek kaydedilir
-        varsayilan_hash = generate_password_hash("123456")
-        cursor.execute("""
-            INSERT INTO calisanlar (ad_soyad, eposta, sifre, rutbe_id, manager_id)
-            VALUES (%s, %s, %s, %s, %s)
-        """, (ad_soyad, eposta, varsayilan_hash, rutbe_id, manager_id))
-        conn.commit()
-        
-        log_ekle(session['user_id'], "Çalışan Eklendi", f"Sisteme yeni çalışan eklendi: {ad_soyad} ({target_rutbe['rutbe_adi']})")
+    talep_eden_yetkili = session.get('user_rutbe') in ZIMMET_ONAY_YETKILI_RUTBELER
 
-        flash("Yeni çalışan başarıyla eklendi.", "success")
+    try:
+        if talep_eden_yetkili:
+            # Varsayılan şifre "123456" hash'lenerek kaydedilir
+            varsayilan_hash = generate_password_hash("123456")
+            cursor.execute("""
+                INSERT INTO calisanlar (ad_soyad, eposta, sifre, rutbe_id, manager_id)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (ad_soyad, eposta, varsayilan_hash, rutbe_id, manager_id))
+            yeni_calisan_id = cursor.lastrowid
+            conn.commit()
+
+            log_ekle(session['user_id'], "Çalışan Eklendi", f"Sisteme yeni çalışan eklendi: {ad_soyad} ({target_rutbe['rutbe_adi']})")
+            bildirim_gonder(
+                yeni_calisan_id,
+                'DİKA Sistemine Eklendiniz',
+                f"{ad_soyad} olarak sisteme eklendiniz. Varsayılan şifreniz '123456'; ilk girişte değiştirmeniz önerilir."
+            )
+            flash("Yeni çalışan başarıyla eklendi.", "success")
+        else:
+            cursor.execute("""
+                INSERT INTO calisan_talepleri (ad_soyad, eposta, rutbe_id, manager_id, talep_eden_id)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (ad_soyad, eposta, rutbe_id, manager_id, session['user_id']))
+            conn.commit()
+
+            log_ekle(session['user_id'], "Çalışan Ekleme Talebi Oluşturuldu", f"{ad_soyad} ({target_rutbe['rutbe_adi']}) için çalışan ekleme talebi oluşturuldu, Birim Başkanı onayı bekleniyor.")
+            bildirim_gonder_rutbeye(
+                'Birim Başkanı',
+                'Yeni Çalışan Ekleme Onayı Bekleniyor',
+                f"{session.get('user_name', 'Bir kullanıcı')}, {ad_soyad} ({target_rutbe['rutbe_adi']}) adında yeni bir çalışan eklemek istiyor. Onayınız bekleniyor."
+            )
+            flash("Çalışan ekleme talebiniz oluşturuldu; Birim Başkanı onayının ardından geçerli olacak.", "info")
     except mysql.connector.Error as err:
         flash(f"Hata: {err}", "danger")
     finally:
@@ -70,6 +92,121 @@ def calisan_ekle():
 
     return redirect(url_for('dashboard.dashboard'))
 
+
+
+@bp.route('/calisan-talep-onayla/<int:id>', methods=['POST'])
+@login_required
+def calisan_talep_onayla(id):
+    onaylayan_id = session['user_id']
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT r.rutbe_adi FROM calisanlar c
+            JOIN rutbeler r ON c.rutbe_id = r.id WHERE c.id = %s
+        """, (onaylayan_id,))
+        onaylayan_satiri = cursor.fetchone()
+        if not onaylayan_satiri or onaylayan_satiri['rutbe_adi'] not in ZIMMET_ONAY_YETKILI_RUTBELER:
+            flash("Yetki Hatası: Çalışan ekleme taleplerini yalnızca Genel Sekreter ve Birim Başkanı onaylayabilir.", "danger")
+            return redirect(url_for('dashboard.dashboard'))
+
+        cursor.execute("""
+            SELECT ad_soyad, eposta, rutbe_id, manager_id, talep_eden_id
+            FROM calisan_talepleri
+            WHERE id = %s AND onay_durumu = 'Bekliyor'
+            FOR UPDATE
+        """, (id,))
+        talep = cursor.fetchone()
+        if not talep:
+            flash("Hata: Onay bekleyen bir çalışan talebi bulunamadı.", "danger")
+            return redirect(url_for('dashboard.dashboard'))
+
+        varsayilan_hash = generate_password_hash("123456")
+        cursor.execute("""
+            INSERT INTO calisanlar (ad_soyad, eposta, sifre, rutbe_id, manager_id)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (talep['ad_soyad'], talep['eposta'], varsayilan_hash, talep['rutbe_id'], talep['manager_id']))
+        yeni_calisan_id = cursor.lastrowid
+
+        cursor.execute("""
+            UPDATE calisan_talepleri SET onay_durumu = 'Onaylandi', onaylayan_id = %s, onay_tarihi = NOW()
+            WHERE id = %s
+        """, (onaylayan_id, id))
+        conn.commit()
+
+        log_ekle(onaylayan_id, "Çalışan Ekleme Talebi Onaylandı", f"{talep['ad_soyad']} isimli çalışanın eklenmesi onaylandı.")
+        bildirim_gonder(
+            yeni_calisan_id,
+            'DİKA Sistemine Eklendiniz',
+            f"{talep['ad_soyad']} olarak sisteme eklendiniz. Varsayılan şifreniz '123456'; ilk girişte değiştirmeniz önerilir."
+        )
+        bildirim_gonder(
+            talep['talep_eden_id'],
+            'Çalışan Ekleme Talebiniz Onaylandı',
+            f"{talep['ad_soyad']} isimli çalışanı ekleme talebiniz onaylandı."
+        )
+        flash(f"{talep['ad_soyad']} isimli çalışan onaylanıp sisteme eklendi.", "success")
+    except mysql.connector.Error as err:
+        conn.rollback()
+        if err.errno == 1062:
+            flash("Onaylanamadı: Bu e-posta adresiyle kayıtlı bir çalışan zaten var.", "danger")
+        else:
+            flash(f"Onay işlemi yapılamadı: {err}", "danger")
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('dashboard.dashboard'))
+
+
+
+@bp.route('/calisan-talep-reddet/<int:id>', methods=['POST'])
+@login_required
+def calisan_talep_reddet(id):
+    reddeden_id = session['user_id']
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT r.rutbe_adi FROM calisanlar c
+            JOIN rutbeler r ON c.rutbe_id = r.id WHERE c.id = %s
+        """, (reddeden_id,))
+        reddeden_satiri = cursor.fetchone()
+        if not reddeden_satiri or reddeden_satiri['rutbe_adi'] not in ZIMMET_ONAY_YETKILI_RUTBELER:
+            flash("Yetki Hatası: Çalışan ekleme taleplerini yalnızca Genel Sekreter ve Birim Başkanı reddedebilir.", "danger")
+            return redirect(url_for('dashboard.dashboard'))
+
+        cursor.execute("""
+            SELECT ad_soyad, talep_eden_id FROM calisan_talepleri
+            WHERE id = %s AND onay_durumu = 'Bekliyor'
+            FOR UPDATE
+        """, (id,))
+        talep = cursor.fetchone()
+        if not talep:
+            flash("Hata: Onay bekleyen bir çalışan talebi bulunamadı.", "danger")
+            return redirect(url_for('dashboard.dashboard'))
+
+        cursor.execute("""
+            UPDATE calisan_talepleri SET onay_durumu = 'Reddedildi', onaylayan_id = %s, onay_tarihi = NOW()
+            WHERE id = %s
+        """, (reddeden_id, id))
+        conn.commit()
+
+        log_ekle(reddeden_id, "Çalışan Ekleme Talebi Reddedildi", f"{talep['ad_soyad']} isimli çalışanın eklenmesi talebi reddedildi.")
+        bildirim_gonder(
+            talep['talep_eden_id'],
+            'Çalışan Ekleme Talebiniz Reddedildi',
+            f"{talep['ad_soyad']} isimli çalışanı ekleme talebiniz reddedildi."
+        )
+        flash("Çalışan ekleme talebi reddedildi.", "info")
+    except mysql.connector.Error as err:
+        conn.rollback()
+        flash(f"Red işlemi yapılamadı: {err}", "danger")
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('dashboard.dashboard'))
 
 
 

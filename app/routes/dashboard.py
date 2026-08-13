@@ -158,6 +158,18 @@ def dashboard():
         """)
         onay_bekleyen_zimmetler = cursor.fetchall()
 
+    onay_bekleyen_calisan_talepleri = []
+    if can_onayla:
+        cursor.execute("""
+            SELECT ct.id, ct.ad_soyad, ct.eposta, r.rutbe_adi, c_talep.ad_soyad AS talep_eden, ct.talep_tarihi
+            FROM calisan_talepleri ct
+            JOIN rutbeler r ON ct.rutbe_id = r.id
+            JOIN calisanlar c_talep ON ct.talep_eden_id = c_talep.id
+            WHERE ct.onay_durumu = 'Bekliyor'
+            ORDER BY ct.talep_tarihi ASC
+        """)
+        onay_bekleyen_calisan_talepleri = cursor.fetchall()
+
     cursor.execute("""
         SELECT id, baslik, mesaj, okundu, tarih
         FROM bildirimler
@@ -211,6 +223,7 @@ def dashboard():
                            aktif_zimmetler=aktif_zimmetler,
                            gecmis_zimmetler=gecmis_zimmetler,
                            onay_bekleyen_zimmetler=onay_bekleyen_zimmetler,
+                           onay_bekleyen_calisan_talepleri=onay_bekleyen_calisan_talepleri,
                            bildirimler=bildirimler,
                            okunmamis_bildirim_sayisi=okunmamis_bildirim_sayisi,
                            is_top_manager=is_top_manager,

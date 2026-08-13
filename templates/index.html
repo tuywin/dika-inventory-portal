@@ -248,7 +248,10 @@
             <div class="card shadow-sm border-0 mb-4">
                 <div class="card-header bg-secondary text-white fw-bold">👤 Yeni Çalışan Kaydı</div>
                 <div class="card-body">
-                    <form action="/calisan-ekle" method="POST"> 
+                    {% if not can_onayla %}
+                    <p class="small text-muted">Oluşturduğunuz çalışan ekleme talepleri Birim Başkanı onayından sonra geçerli olur.</p>
+                    {% endif %}
+                    <form action="/calisan-ekle" method="POST">
                       <div class="mb-2">
                             <input type="text" name="ad_soyad" class="form-control" placeholder="Ad Soyad" required>
                         </div>
@@ -312,6 +315,9 @@
                                       <option value="İdari ve Mali İşler">İdari ve Mali İşler</option>
                                       <option value="Destek Hizmetleri">Destek Hizmetleri</option>
                                       <option value="Genel Depo">Genel Depo</option>
+                                      <option value="Şırnak YDO">Şırnak YDO</option>
+                                      <option value="Siirt YDO">Siirt YDO</option>
+                                      <option value="Batman YDO">Batman YDO</option>
                                   </select>
                               </div>
                             </div>
@@ -634,6 +640,49 @@
                     </table>
                 </div>
             </div>
+
+            <!-- 1.4. Onay Bekleyen Çalışan Talepleri -->
+            {% if can_onayla %}
+            <div class="card shadow-sm border-danger mb-4">
+                <div class="card-header bg-danger text-white fw-bold d-flex justify-content-between align-items-center">
+                    <span>👤⏳ Onay Bekleyen Çalışan Talepleri</span>
+                    <span class="badge bg-light text-dark">{{ onay_bekleyen_calisan_talepleri|length }} Adet</span>
+                </div>
+                <div class="card-body p-0" style="max-height: 350px; overflow-y: auto;">
+                    <table class="table table-hover mb-0 align-middle searchable-table">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>Ad Soyad</th>
+                                <th>Rütbe</th>
+                                <th>Talep Eden</th>
+                                <th>İşlem</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for t in onay_bekleyen_calisan_talepleri %}
+                            <tr>
+                                <td class="fw-bold">{{ t.ad_soyad }}<br><small class="text-muted">{{ t.eposta }}</small></td>
+                                <td>{{ t.rutbe_adi }}</td>
+                                <td>{{ t.talep_eden }} <br><small class="text-muted">{{ t.talep_tarihi }}</small></td>
+                                <td>
+                                    <form action="/calisan-talep-onayla/{{ t.id }}" method="POST" class="d-inline">
+                                        <button type="submit" class="btn btn-sm btn-success fw-bold">Onayla</button>
+                                    </form>
+                                    <form action="/calisan-talep-reddet/{{ t.id }}" method="POST" class="d-inline" onsubmit="return confirm('Bu çalışan ekleme talebini reddetmek istediğinize emin misiniz?');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger fw-bold">Reddet</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-3">Onay bekleyen çalışan talebi bulunmuyor.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
 
             <!-- 1.5. Onay Bekleyen Zimmetler -->
             {% if can_onayla %}
