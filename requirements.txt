@@ -1,0 +1,7 @@
+flask
+mysql-connector-python
+reportlab
+werkzeug
+cryptography
+pyOpenSSL
+gunicorn

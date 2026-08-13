@@ -1,0 +1,17 @@
+[Unit]
+Description=DIKA Zimmet ve Envanter Portali (Gunicorn)
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=dika
+Group=dika
+WorkingDirectory=/opt/dika_proje
+EnvironmentFile=/etc/dika/dika.env
+RuntimeDirectory=dika
+ExecStart=/opt/dika_proje/venv/bin/gunicorn --workers 3 --bind unix:/run/dika/dika.sock main:app
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
