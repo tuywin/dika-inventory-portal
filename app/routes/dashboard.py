@@ -109,12 +109,13 @@ def dashboard():
     
     cursor.execute("""
         SELECT z.id, z.esya_id, e.esya_adi, e.seri_no, e.fiyat, e.fatura_pdf, e.garanti_bitis, e.kategori,
-               c_alan.ad_soyad AS alan_personel,
+               c_alan.id AS alan_id, c_alan.ad_soyad AS alan_personel, r_alan.level AS alan_level,
                c_veren.ad_soyad AS veren_amir,
                z.zimmet_tarihi, z.tahmini_iade_tarihi
         FROM zimmetler z
         JOIN esyalar e ON z.esya_id = e.id
         JOIN calisanlar c_alan ON z.teslim_alan_id = c_alan.id
+        JOIN rutbeler r_alan ON c_alan.rutbe_id = r_alan.id
         JOIN calisanlar c_veren ON z.zimmetleyen_id = c_veren.id
         WHERE z.iade_tarihi IS NULL
         ORDER BY z.zimmet_tarihi DESC

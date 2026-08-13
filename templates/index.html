@@ -655,9 +655,13 @@
                                   </div>
                               </td>
                                 <td>
+                                    {% if session.get('user_id') == z.alan_id or session.get('user_level', 0) > z.alan_level %}
                                     <form action="/zimmet-iade/{{ z.id }}/{{ z.esya_id }}" method="POST" onsubmit="return confirm('Bu eşyayı iade almak istediğinize emin misiniz?');">
                                         <button type="submit" class="btn btn-sm btn-outline-danger fw-bold">Teslim Al</button>
                                     </form>
+                                    {% else %}
+                                    <span class="text-muted small">Yetkiniz yok</span>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% else %}

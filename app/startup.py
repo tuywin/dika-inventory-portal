@@ -20,6 +20,7 @@ YENI_RUTBELER = (
     (11, 'Uzman', 70),
     (12, 'Destek Personeli', 45),
     (13, 'Sürekli İşçi', 20),
+    (14, 'Taşınır Kayıt Yetkilisi', 71),
 )
 
 

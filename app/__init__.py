@@ -14,7 +14,9 @@ def create_app():
         template_folder=os.path.join(base_dir, 'templates'),
         static_folder=os.path.join(base_dir, 'static'),
     )
-    app.secret_key = 'dika_cok_gizli_session_anahtari_2026'
+    # Production'da DIKA_SECRET_KEY ortam degiskeni mutlaka ayarlanmali;
+    # aksi halde session imzalama anahtari kod icinde sabit kalir.
+    app.secret_key = os.environ.get('DIKA_SECRET_KEY', 'dika_cok_gizli_session_anahtari_2026')
 
     app.config['UPLOAD_FOLDER'] = os.path.join(app.static_folder, 'uploads')
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)

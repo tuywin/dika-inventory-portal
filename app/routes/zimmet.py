@@ -1,6 +1,7 @@
 """Zimmet verme/iade etme ve tutanak (PDF) islemleri."""
 import io
 import os
+import mysql.connector
 from flask import Blueprint, current_app, flash, redirect, request, send_file, session, url_for
 from werkzeug.utils import secure_filename
 
@@ -93,20 +94,47 @@ def zimmet_ver():
 def zimmet_iade(zimmet_id, esya_id):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
+    try:
+        # Kayit kilitlenir; ayni zimmet ayni anda iki kez iade islenemez.
+        cursor.execute("""
+            SELECT z.esya_id, z.teslim_alan_id, r.level AS alan_level
+            FROM zimmetler z
+            JOIN calisanlar c ON c.id = z.teslim_alan_id
+            JOIN rutbeler r ON r.id = c.rutbe_id
+            WHERE z.id = %s AND z.iade_tarihi IS NULL
+            FOR UPDATE
+        """, (zimmet_id,))
+        zimmet = cursor.fetchone()
+        if not zimmet or zimmet['esya_id'] != esya_id:
+            flash("Hata: İade edilecek aktif zimmet kaydı bulunamadı.", "danger")
+            return redirect(url_for('dashboard.dashboard'))
 
-    cursor.execute("SELECT esya_adi, seri_no FROM esyalar WHERE id = %s", (esya_id,))
-    esya_info = cursor.fetchone()
+        # zimmet-ver ile simetrik yetki kurali: iadeyi ya zimmetin sahibi
+        # kendisi, ya da ondan ust rutbeli biri alabilir.
+        user_id = session['user_id']
+        user_level = int(session.get('user_level', 0))
+        is_owner = str(user_id) == str(zimmet['teslim_alan_id'])
+        is_superior = user_level > int(zimmet['alan_level'])
+        if not (is_owner or is_superior):
+            flash("Yetki Hatası: Bu zimmeti yalnızca eşyanın sahibi veya ondan üst rütbeli bir amir iade alabilir.", "danger")
+            return redirect(url_for('dashboard.dashboard'))
 
-    cursor.execute("UPDATE zimmetler SET iade_tarihi = NOW() WHERE id = %s", (zimmet_id,))
-    cursor.execute("UPDATE esyalar SET durum = 'Bosta' WHERE id = %s", (esya_id,))
+        cursor.execute("SELECT esya_adi, seri_no FROM esyalar WHERE id = %s", (esya_id,))
+        esya_info = cursor.fetchone()
 
-    conn.commit()
-    cursor.close()
-    conn.close()
+        cursor.execute("UPDATE zimmetler SET iade_tarihi = NOW() WHERE id = %s", (zimmet_id,))
+        cursor.execute("UPDATE esyalar SET durum = 'Bosta' WHERE id = %s", (esya_id,))
+        conn.commit()
 
-    log_ekle(session['user_id'], "İade Alındı", f"Eşya ({esya_info['esya_adi']} - {esya_info['seri_no']}) iade alındı ve boşa çıkarıldı.")
+        log_ekle(user_id, "İade Alındı", f"Eşya ({esya_info['esya_adi']} - {esya_info['seri_no']}) iade alındı ve boşa çıkarıldı.")
+        flash("Eşya başarıyla iade alındı.", "info")
+    except mysql.connector.Error as err:
+        conn.rollback()
+        flash(f"İade işlemi yapılamadı: {err}", "danger")
+    finally:
+        cursor.close()
+        conn.close()
 
-    flash("Eşya başarıyla iade alındı.", "info")
     return redirect(url_for('dashboard.dashboard'))
 
 
