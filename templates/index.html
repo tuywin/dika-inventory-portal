@@ -764,17 +764,19 @@
                                 <td><span class="badge bg-info text-dark">{{ z.veren_amir }}</span></td>
                                 <td>
                                   <div class="btn-group btn-group-sm">
-                                      <a href="/zimmet-pdf/{{ z.id }}" target="_blank" class="btn btn-outline-dark fw-bold">
-                                          📄 Tutanak PDF
-                                      </a>
                                       {% if z.imzali_tutanak_pdf %}
-                                          <a href="/static/uploads/{{ z.imzali_tutanak_pdf }}" target="_blank" class="btn btn-success fw-bold" title="Tutanağı Aç">
+                                          <a href="/uploads/{{ z.imzali_tutanak_pdf }}" target="_blank" class="btn btn-success fw-bold" title="Tutanağı Aç">
                                               <i class="bi bi-eye-fill"></i> Tutanağı İncele
                                           </a>
-                                          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#uploadModal{{ z.id }}" title="Yeniden Yükle">
-                                              <i class="bi bi-pencil-square"></i>
-                                          </button>
+                                          <form action="/tutanak-sil/{{ z.id }}" method="POST" class="d-inline" onsubmit="return confirm('Yüklenen imzalı tutanağı kaldırmak istediğinize emin misiniz?');">
+                                              <button type="submit" class="btn btn-outline-danger fw-bold" title="Yüklenen Tutanağı Kaldır">
+                                                  <i class="bi bi-trash"></i> Tutanağı Kaldır
+                                              </button>
+                                          </form>
                                       {% else %}
+                                          <a href="/zimmet-pdf/{{ z.id }}" target="_blank" class="btn btn-outline-dark fw-bold">
+                                              📄 Tutanak PDF
+                                          </a>
                                           <button type="button" class="btn btn-outline-primary fw-bold" data-bs-toggle="modal" data-bs-target="#uploadModal{{ z.id }}">
                                               <i class="bi bi-upload"></i> İmzalı Yükle
                                           </button>

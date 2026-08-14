@@ -443,3 +443,38 @@ def tutanak_yukle(zimmet_id):
         flash('Sadece PDF formatında dosya yükleyebilirsiniz.', 'warning')
 
     return redirect('/')
+
+
+
+@bp.route('/tutanak-sil/<int:zimmet_id>', methods=['POST'])
+@login_required
+def tutanak_sil(zimmet_id):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT imzali_tutanak_pdf FROM zimmetler WHERE id = %s FOR UPDATE", (zimmet_id,))
+        zimmet = cursor.fetchone()
+        if not zimmet or not zimmet['imzali_tutanak_pdf']:
+            flash("Hata: Kaldırılacak bir imzalı tutanak bulunamadı.", "danger")
+            return redirect(url_for('dashboard.dashboard'))
+
+        eski_dosya = zimmet['imzali_tutanak_pdf']
+        cursor.execute("UPDATE zimmetler SET imzali_tutanak_pdf = NULL WHERE id = %s", (zimmet_id,))
+        conn.commit()
+
+        # Diskteki dosyayi da temizlemeyi dene; bulunamazsa/silinemezse islemi bozmaz.
+        try:
+            os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], eski_dosya))
+        except OSError:
+            pass
+
+        log_ekle(session['user_id'], "İmzalı Tutanak Kaldırıldı", f"Zimmet #{zimmet_id} için yüklenmiş imzalı tutanak kaldırıldı: {eski_dosya}")
+        flash("İmzalı tutanak kaldırıldı. Dilerseniz doğru dosyayı yeniden yükleyebilirsiniz.", "info")
+    except mysql.connector.Error as err:
+        conn.rollback()
+        flash(f"İşlem yapılamadı: {err}", "danger")
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('dashboard.dashboard'))

@@ -131,7 +131,7 @@ def dashboard():
         SELECT z.id, z.esya_id, e.esya_adi, e.seri_no, e.adet, e.fiyat, e.fatura_pdf, e.garanti_bitis, e.kategori,
                c_alan.id AS alan_id, c_alan.ad_soyad AS alan_personel, r_alan.level AS alan_level,
                c_veren.ad_soyad AS veren_amir,
-               z.zimmet_tarihi, z.tahmini_iade_tarihi
+               z.zimmet_tarihi, z.tahmini_iade_tarihi, z.imzali_tutanak_pdf
         FROM zimmetler z
         JOIN esyalar e ON z.esya_id = e.id
         JOIN calisanlar c_alan ON z.teslim_alan_id = c_alan.id
